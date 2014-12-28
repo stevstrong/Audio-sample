@@ -2,39 +2,39 @@
 #include <avr/io.h>
 #include <util/delay.h>
 
-#define DEBUG 1 // set to 1 to also send out info on the serial port
+//#define DEBUG 1 // uncomment to send out info on the serial port
 
 #define RXDATA 14
-//#define RELAIS_PIN 8
 #define MAX_VAL 2 // number of consequtive increased value to detect transition
+#define ADC_OUT_PIN 9
+#define SET_ADC_OUT_PIN  asm("sbi 0x05, 1")  // set PB1 (D9)
+#define CLEAR_ADC_OUT_PIN  asm("cbi 0x05, 1")  // set PB1 (D9)
+
 #ifdef DEBUG
-  #define ADC_OUT_PIN 9
   //int ADC_OUT_PIN = 9;
   //#define DBG_PIN 8
   int DBG_PIN = 8;
   static byte dbg = 0;
-  #define SET_ADC_PIN  asm("sbi 0x05, 1")  // set PB1 (D9)
-  #define CLEAR_ADC_PIN  asm("cbi 0x05, 1")  // set PB1 (D9)
   #define SET_DBG_PIN  asm("sbi 0x05, 0")  // set PB1 (D8)
   #define CLEAR_DBG_PIN  asm("cbi 0x05, 0")  // set PB1 (D8)
 #endif
 
-static byte oldVal = 0;
+volatile byte oldVal;
 ////////////////////////////////////////////////
-static void ADC_Irq ()
+ISR(ADC_vect)
 {
   byte readVal = ADCH; // result is left adjusted, we need only the upper 8 bits
 //  byte count;// = TCNT2; // timer 2 counter value
   if ( readVal>5 && readVal>oldVal) {
 //    if ( adcCnt<MAX_VAL && (++adcCnt)==MAX_VAL && adcStatus==LOW ) { // detect 0->1 transition
 //      adcStatus = HIGH;
-      SET_ADC_PIN;
+      SET_ADC_OUT_PIN;
 //    }
   } else {
 //  if (readVal<oldVal) {
 //    if ( adcCnt>0 && (--adcCnt)==0 && adcStatus==HIGH ) { // detect 1->0 transition
 //      adcStatus = LOW;
-      CLEAR_ADC_PIN;
+      CLEAR_ADC_OUT_PIN;
 //    }
   }
   oldVal = readVal;
@@ -50,25 +50,13 @@ static void ADC_Irq ()
 #endif
 }
 ////////////////////////////////////////////////
-ISR(ADC_vect) {
-  ADC_Irq();
-}
-///////////////////////////////////////////////
-static void Audio_sample_reset (void)
-{
-//  adcStatus = LOW;
-#ifdef DEBUG
-  digitalWrite(ADC_OUT_PIN,0);
-#endif
-}
-////////////////////////////////////////////////
 static void Audio_sample_init(void)
 {
-    pinMode(RXDATA, INPUT);
-//    pinMode(RELAIS_PIN, OUTPUT);
-//    digitalWrite(RXDATA, 1); // pull-up
-#ifdef DEBUG
+  oldVal = 0;
+  pinMode(RXDATA, INPUT);
   pinMode(ADC_OUT_PIN,OUTPUT);
+  digitalWrite(ADC_OUT_PIN,0);
+#ifdef DEBUG
   pinMode(DBG_PIN,OUTPUT);
 #endif
   // set ADC0
@@ -88,8 +76,7 @@ static void Audio_sample_init(void)
     TCCR2A = 0;
     TCCR2B = _BV(CS22);
     TIMSK2 = _BV(TOIE2);
- */   //
-    Audio_sample_reset(); // initialise ADC transition detection
+ */
 }
 //////////////////////////////////////////////////////
 void setup ()
