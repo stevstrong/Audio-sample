@@ -1,6 +1,6 @@
 // Audio signal from ADC0 continuously samped, alternatively stored in 2 different buffers,
 // copied into the SD card cache, and then stored on SD card.
-// Based on RawWrite.inno example of SDfat library.
+// Based on RawWrite.ino example of SdFat library.
 /////////////////////////////////////////////////////////////////////////////////////
 
 #include <SdFat.h>
