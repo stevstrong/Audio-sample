@@ -50,6 +50,11 @@ static uint8_t * pCache;
 /************************************************************************************/
 #define ADC_START (ADCSRA = _BV(ADEN) | _BV(ADSC) | _BV(ADATE) | _BV(ADIE) | 0x04) // enable, start conversion, auto trigger, prescaler 128
 #define ADC_STOP (ADCSRA = 0)
+//-----------------------------------------------
+#define ADC_MUX_CHANNELS 4  // must be power of 2
+#define ADC_MUX_CHANNELS_MASK (ADC_MUX_CHANNELS-1)
+#define ADC_MUX_INIT  (_BV(REFS0) | _BV(ADLAR))  // Vcc as ref, left adjust for 8 bit resolution, use ADC0
+static volatile byte adc_mux;
 /************************************************************************************/
 static void adc_setup ()
 {
@@ -64,10 +69,12 @@ static void adc_setup ()
 #endif
   // set ADC0
   ADC_STOP;
-  ADMUX = _BV(REFS0) | _BV(ADLAR); // Vcc as ref, left adjust for 8 bit resolution, use ADC0
+  ADMUX = ADC_MUX_INIT;
   //ADCSRA = _BV(ADEN) | _BV(ADSC) | _BV(ADATE) | _BV(ADIE) | 0x04; // enable, start conversion, auto trigger, prescaler 128
   ADCSRB = 0;  // free running mode
   DIDR0 = ~(0xC0 | _BV(ADC0D)); // disable other ADC input buffers
+  //
+  adc_mux = 0;
 }
 
 /************************************************************************************/
@@ -109,6 +116,8 @@ ISR(ADC_vect)
       digitalWrite(ADC_OUT_PIN,0);
     }
   }
+  // update ADC_MUX
+  ADMUX = ADC_MUX_INIT | ( adc_mux = (adc_mux+1) & ADC_MUX_CHANNELS_MASK);
 }
 /************************************************************************************/
 void sd_init()
