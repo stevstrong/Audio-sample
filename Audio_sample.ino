@@ -5,17 +5,23 @@
 
 #include <SdFat.h>
 #include <SdFatUtil.h>
-
 #include <util/delay.h>
 
-#define DEBUG 1 // set to 1 to send out info on the serial port
+/***********************************************************************************/
+/* Configure the active board */
+#define _BOARD_YUN_
+/* Configure the ADC reference voltage */
+#define _USE_AREF_
+/***********************************************************************************/
 
+/**/
+#define DEBUG 1 // set to 1 to send out info on the serial port
+/**/
 #ifdef DEBUG
   #define ADC_OUT_PIN 9
   #define DBG_PIN 8
   static byte dbg = 0;
 #endif
-
 /************************************************************************************/
 // number of blocks in the contiguous file
 #define BLOCK_COUNT 100
@@ -49,19 +55,27 @@ static uint8_t * pCache;
 //-----------------------------------------------
 #define ADC_MUX_CHANNELS 4  // must be power of 2, ADC_MUX_INIT must be changed accordingly
 #define ADC_MUX_CHANNELS_MASK (ADC_MUX_CHANNELS-1)
-// setup mux: internal 1.1V / 2.56V as ref, left adjust for 8 bit resolution, use ADC4..7
-#define ADC_MUX_INIT  ( _BV(REFS1) | _BV(REFS0) | _BV(ADLAR) | _BV(MUX2) )
+/**/
+#ifdef _USE_AREF_
+  // setup mux: external ref, left adjust for 8 bit resolution, use ADC4...7
+  #define ADC_MUX_INIT  ( _BV(ADLAR) | _BV(MUX2) )
+#else
+  // setup mux: internal 1.1V / 2.56V as ref, left adjust for 8 bit resolution, use ADC4...7
+  #define ADC_MUX_INIT  ( _BV(REFS1) | _BV(REFS0) | _BV(ADLAR) | _BV(MUX2) )
+#endif
+/**/
+/**/
 static volatile byte adc_mux;
 static volatile byte adc_0; // very first conversion result
 /************************************************************************************/
 static void adc_setup ()
 {
-  // set pin mode of ADC4...7 to input
-  pinMode(A4, INPUT);
-  pinMode(A5, INPUT);
-  pinMode(A6, INPUT);
-  pinMode(A7, INPUT);
-//    digitalWrite(RXDATA, 1); // pull-up
+  // set pin mode of ADC4...7 (Yun) or ADC0...3 (Pro Mini) to input
+  pinMode(A0, INPUT);
+  pinMode(A1, INPUT);
+  pinMode(A2, INPUT);
+  pinMode(A3, INPUT);
+  /**/
 #ifdef DEBUG
   pinMode(ADC_OUT_PIN,OUTPUT);
   digitalWrite(ADC_OUT_PIN,0);
@@ -71,12 +85,16 @@ static void adc_setup ()
   /**/
   adc_mux = 3;
   adc_0 = 0;
-  // set ADC0
+  // stop ADC
   ADC_STOP;
   ADMUX = ADC_MUX_INIT | adc_mux; // init mux to ADC7
   //ADCSRA = _BV(ADEN) | _BV(ADSC) | _BV(ADATE) | _BV(ADIE) | 0x04; // enable, start conversion, auto trigger, prescaler 128
   ADCSRB = 0;  // free running mode
-  DIDR0 = ~(0xC0 | _BV(ADC0D)); // disable other ADC input buffers
+#ifdef _BOARD_YUN_
+  DIDR0 = ~(0xF0); // enable ADC 7...4 (Yun) input buffers
+#else
+  DIDR0 = ~(0xCF); // enable ADC 0...3 (Pro Mini) input buffers
+#endif
 }
 
 /************************************************************************************/
