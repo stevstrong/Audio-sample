@@ -50,7 +50,8 @@ SdFile file;
 // file extent
 static uint8_t * pCache;
 /************************************************************************************/
-#define ADC_START (ADCSRA = _BV(ADEN) | _BV(ADSC) | _BV(ADATE) | _BV(ADIE) | 0x04) // enable, start conversion, auto trigger, prescaler 128
+// ADC enable, start conversion, auto trigger, prescaler 128
+#define ADC_START (ADCSRA = _BV(ADEN) | _BV(ADSC) | _BV(ADATE) | _BV(ADIE) | 0x04)
 #define ADC_STOP (ADCSRA = 0)
 //-----------------------------------------------
 #define ADC_MUX_CHANNELS 4  // must be power of 2, ADC_MUX_INIT must be changed accordingly
@@ -60,7 +61,7 @@ static uint8_t * pCache;
   // setup mux: external ref, left adjust for 8 bit resolution, use ADC4...7
   #define ADC_MUX_INIT  ( _BV(ADLAR) | _BV(MUX2) )
 #else
-  // setup mux: internal 1.1V / 2.56V as ref, left adjust for 8 bit resolution, use ADC4...7
+  // setup mux: internal 2.56V (Yun) / 1.1 (Pro Mini) as ref, left adjust for 8 bit resolution, use ADC4...7
   #define ADC_MUX_INIT  ( _BV(REFS1) | _BV(REFS0) | _BV(ADLAR) | _BV(MUX2) )
 #endif
 /**/
@@ -88,7 +89,6 @@ static void adc_setup ()
   // stop ADC
   ADC_STOP;
   ADMUX = ADC_MUX_INIT | adc_mux; // init mux to ADC7
-  //ADCSRA = _BV(ADEN) | _BV(ADSC) | _BV(ADATE) | _BV(ADIE) | 0x04; // enable, start conversion, auto trigger, prescaler 128
   ADCSRB = 0;  // free running mode
 #ifdef _BOARD_YUN_
   DIDR0 = ~(0xF0); // enable ADC 7...4 (Yun) input buffers
