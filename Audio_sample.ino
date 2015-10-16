@@ -237,6 +237,7 @@ void sd_write()
   Serial.print(F("Elapsed total time [millis]: ")); Serial.println(t);
   Serial.print(F("Max block rec time [micros]: ")); Serial.println(maxBlockTime);
   Serial.print(F("Max SD write time [micros]: ")); Serial.println( maxWriteTime );
+  Serial.print(F("Data recording speed [kBps]:")); Serial.println(((uint32_t)BLOCK_COUNT*512)/t);
   Serial.print(F("Overruns: ")); Serial.println( buf_of );
 }
 /************************************************************************************/
