@@ -146,6 +146,7 @@ ISR(ADC_vect)
 /************************************************************************************/
 void sd_init()
 {
+  Serial.println(F("Initializing SD card..."));
   // initialize the SD card at SPI_FULL_SPEED for best performance.
   // try SPI_HALF_SPEED if bus errors occur.
   if (!sd.begin(SS, SPI_FULL_SPEED)) sd.initErrorHalt();
@@ -174,7 +175,6 @@ void sd_init()
   if (!sd.card()->writeStart(bgnBlock, BLOCK_COUNT)) {
     error("writeStart failed");
   }
-  Serial.println(F("SD card initialized."));
 }
 /************************************************************************************/
 void sd_write()
@@ -257,10 +257,10 @@ void loop ()
   while (Serial.read() >= 0) {};
   
   buf_init(); // initialise ADC transition detection
-  sd_init();  // prepare SD card
 
   Serial.println(F("Press any key to start...\n"));
   while (Serial.read() <= 0) {};
 
+  sd_init();  // prepare SD card
   sd_write();
 }
