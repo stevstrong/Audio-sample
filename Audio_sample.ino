@@ -174,21 +174,24 @@ void sd_init()
   if (!sd.card()->writeStart(bgnBlock, BLOCK_COUNT)) {
     error("writeStart failed");
   }
+  Serial.println(F("SD card initialized."));
 }
 /************************************************************************************/
 void sd_write()
 {
+  Serial.println(F("Recording started..."));
   // start ADC
-  //Serial.println(F("Start ADC..."));
   ADC_START;
 
   // init stats
   uint32_t maxWriteTime = 0;
+  uint32_t maxBlockTime = 0;
 
   uint32_t t = millis();
   // acquire data to buffers
   for (uint16_t b = 0; b < BLOCK_COUNT; b++)
   {
+    uint32_t tb = micros();
     /**/
     if ( buf_wrSel==BUF1 ) {
       //  ADC writes BUF1, wait till BUF1 is full
@@ -217,6 +220,9 @@ void sd_write()
     // update max write time
     if (tw > maxWriteTime)  maxWriteTime = tw;
     //Serial.println(b);
+    tb = micros() - tb;
+    // update max write time
+    if (tb > maxBlockTime)  maxBlockTime = tb;
   }
   ADC_STOP;
   // total write time
@@ -228,8 +234,9 @@ void sd_write()
   file.close();
  
   Serial.println(F("Acquisition done."));
-  Serial.print(F("Elapsed time [millis]: ")); Serial.println(t);
-  Serial.print(F("Max write time [micros]: ")); Serial.println( maxWriteTime );
+  Serial.print(F("Elapsed total time [millis]: ")); Serial.println(t);
+  Serial.print(F("Max block rec time [micros]: ")); Serial.println(maxBlockTime);
+  Serial.print(F("Max SD write time [micros]: ")); Serial.println( maxWriteTime );
   Serial.print(F("Overruns: ")); Serial.println( buf_of );
 }
 /************************************************************************************/
@@ -237,7 +244,7 @@ void setup ()
 {
 #if DEBUG
     Serial.begin(57600);
-    Serial.println(F("\nAudio sampling"));
+    Serial.println(F("\n*** Audio sampling and recording ***"));
 #endif
 
     adc_setup();
@@ -246,12 +253,13 @@ void setup ()
 //////////////////////////////////////////////////////
 void loop ()
 {
-  while (Serial.read() >= 0) {}
-  // pstr stores strings in flash to save RAM
-  Serial.println(F("Press any key to start...\n"));
-  while (Serial.read() <= 0) {}
-
+  while (Serial.read() >= 0) {};
+  
   buf_init(); // initialise ADC transition detection
-  sd_init();
+  sd_init();  // prepare SD card
+
+  Serial.println(F("Press any key to start...\n"));
+  while (Serial.read() <= 0) {};
+
   sd_write();
 }
