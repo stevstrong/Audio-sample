@@ -2,6 +2,7 @@ Audio-sample
 ============
 
 Audio sampling with Arduino Yun / Pro Mini.
+
 Analog inputs 0 to 3 are continuously and sequentially sampled in the ADC interrupt service routine.
 The sampled data is sequentially stored in a double buffer area. Once the first buffer is full, the second buffer is used to store the ADC data in the ISR, while the first buffer will be written onto SD card on main level.
 For writing to SD card the contiguous writing is used, see RawWrite example of the SdFat lib.
