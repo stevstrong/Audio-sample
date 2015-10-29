@@ -14,6 +14,7 @@
 
 #include <libmaple/adc.h>
 #include <libmaple/dma.h>
+#include <libmaple/timer.h>
 
 /********************************************************************/
 // Configuration
@@ -58,6 +59,37 @@ volatile uint32 dma_irq_fired = 0;
 // This helps explain what's going on inside loop(); see comments below.
 volatile uint32 dma_isr = 0;
 
+/*****************************************************************************/
+void TIMER_Setup(void)
+{
+	timer_init(TIMER3);
+	// set timer 3 in down-counter mode with auto-reload.
+	// as this mode is not supported by the core lib, we have to set up the registers manually.
+	(TIMER3->regs).adv->CR1 = ( TIMER_CR1_CKD_4TICKINT | TIMER_CR1_ARPE | TIMER_CR1_DIR );	// URS and UDIS must be 0
+	(TIMER3->regs).adv->CR2 = ( TIMER_CR2_MMS_UPDATE );
+	(TIMER3->regs).adv->SMCR = 0;
+	(TIMER3->regs).adv->DIER = 0;
+	(TIMER3->regs).adv->SR = 0;
+	(TIMER3->regs).adv->EGR = 0;			// set bit TIMER_EGR_UG to generate event by SW !
+	(TIMER3->regs).adv->CCMR1 = 0;
+	(TIMER3->regs).adv->CCMR2 = 0;
+	(TIMER3->regs).adv->CCER = 0;
+	(TIMER3->regs).adv->CNT = 0xFFFF;	// set to maximum value to avoid to early event generation
+	(TIMER3->regs).adv->PSC = 0;			// don't use pre-scaler
+	(TIMER3->regs).adv->ARR = SEQUENCE_SAMPLING_TICK_VALUE;	// to be defined or calculated
+	(TIMER3->regs).adv->CCR1 = 0;
+	(TIMER3->regs).adv->CCR2 = 0;
+	(TIMER3->regs).adv->CCR3 = 0;
+	(TIMER3->regs).adv->CCR4 = 0;
+	(TIMER3->regs).adv->DCR = 0;			// don't use DMA
+	(TIMER3->regs).adv->DMAR = 0;
+	// don't forget to set the ADC trigger source to TIMER3->TRG0. Do it before enabling the ADC !!!
+	adc_set_extsel(ADC1, ADC_EXT_EV_TIM3_TRGO)
+	// let timer run - do this just before generating a trigger by SW
+	timer_resume(TIMER3);
+	// trigger the sampling of first sequence by generating an update event by SW
+	timer_generate_update(TIMER3);
+}
 /*****************************************************************************/
 /*
 * calc_adc_sequence(ADCx_Sequence) converts the SQR3 6 channels' (each ADC1 and ADC2) list into
@@ -173,6 +205,7 @@ void setup()
 //	pinMode(ADC_IN9, INPUT_ANALOG);
 	ADC_Setup();
 	DMA_Setup();
+	TIMER_Setup();
 }
 /*****************************************************************************/
 /*****************************************************************************/
