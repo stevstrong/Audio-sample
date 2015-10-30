@@ -60,6 +60,11 @@ volatile uint32 dma_irq_fired = 0;
 volatile uint32 dma_isr = 0;
 
 /*****************************************************************************/
+void TIMER3_isr(void)
+{
+	// write here your code
+}
+/*****************************************************************************/
 void TIMER_Setup(void)
 {
 	timer_init(TIMER3);
@@ -83,6 +88,8 @@ void TIMER_Setup(void)
 	(TIMER3->regs).adv->CCR4 = 0;
 	(TIMER3->regs).adv->DCR = 0;			// don't use DMA
 	(TIMER3->regs).adv->DMAR = 0;
+	// attach interrupt if you want to test TIMER3 interrupt request
+	timer_attach_interrupt(TIMER3, TIMER_UPDATE_INTERRUPT, TIMER3_isr);
 	// don't forget to set the ADC trigger source to TIMER3->TRG0. Do it before enabling the ADC !!!
 	adc_set_extsel(ADC1, ADC_EXT_EV_TIM3_TRGO)
 	// let timer run - do this just before generating a trigger by SW
