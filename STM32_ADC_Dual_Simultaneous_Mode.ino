@@ -19,8 +19,8 @@
 // Configuration
 /********************************************************************/
 // setup recording parameters
-#define RECORDING_TIME			100	// in milliseconds
-#define SAMPLING_FREQUENCY		44100	// in Hz
+#define RECORDING_TIME			1000	// in milliseconds
+#define SAMPLING_FREQUENCY		26000	// in Hz
 
 // regular channel sequence length
 #define SAMPLES_PER_SEQUENCE	4	// must be power of 2 !!!
@@ -271,7 +271,7 @@ void ADC_Setup(void)
 void SD_Init(void)
 {
 	// initialize the SD card
-	if ( !sd.begin(chipSelect, SPI_CLOCK_DIV4) ) {
+	if ( !sd.begin(chipSelect, SPI_CLOCK_DIV2) ) {
 		sd.initErrorHalt();
 	}
 	// delete possible existing file
@@ -372,12 +372,12 @@ void loop()
 	Serial.println(F("\ntype any character to start\n"));
 	while (Serial.read() <= 0) {}
 
-	Serial.println(F("-> sampling started..."));
-
-	// initialize DMA variables
-	DMA_Init();
 	// prepare card
 	SD_Init();
+	// initialize DMA variables
+	DMA_Init();
+
+	Serial.println(F("-> sampling started..."));
 
 	uint32_t tout;	// time-out
 	uint32_t dma_irq_full_complete_count = 0;
