@@ -2,14 +2,14 @@ Audio sampling with STM32 (Maple Mini clone)
 --------------------------------------------
 	
 The ADC conversion of multiple channels is performed in dual regular simultaneous conversion mode.
-Each conversion sequence is started by SW.
+
 The result of each dual sample (32bits) is stored into the ADC buffer via DMA transfer.
-After a sequence is completely sampled, a new sequence is automatically started.
-The number of sequences to sample is configurable.
+After a sequence is completely sampled, a new sequence is automatically started by timer 3 update event.
+The sampled data is stored on SD card, each half buffer is pushed to card after being filled by DMA.
 
-Current performance: 6 channel data get sampled 10 times within 30 useconds (~1 us for 1 dual channel sample!)
+The number of sequences, the recording time and the sampling frequency are configurable.
 
-Todo: implement timed sequential sampling starts.
+Current performance: 8 channel data get sampled with 28kHz.
 
 ----------------------------------------------------------------------------------------------------------
 	
