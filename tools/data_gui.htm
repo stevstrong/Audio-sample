@@ -24,13 +24,12 @@
 			var canvasWidth = 1200;
 			var canvasHeigth = 600;
 			// labels
-			const SPAN = 5;
 			var fSize = 10;
 			var lineWidthG = 1;
 			var textColor = 'rgba(100,100,100,1)';
 			var gridColor = 'rgba(0,0,0,0.1)'; 
 			var bgColor = 'rgba(255,255,255,1)';
-			var plotColor = ['#444444', '#00CC00', '#0000FF', '#FF8800', '#00CC88', '#8800FF', '#CCCC00', '#0088CC', '#CC00CC'];
+			var plotColor = ['#FF0000', '#00CC00', '#0000FF', '#FF8800', '#00CC88', '#8800FF', '#CCCC00', '#0088CC', '#CC00CC'];
 			/******************************************************************************/
 			// add canvas and data placeholder 
 			document.write("<canvas id='myCanvas' width="+canvasWidth+" height="+canvasHeigth+" style='z-index: 1; box-shadow: 0px 0px 10px 15px #D5D5D5'" +
@@ -43,21 +42,12 @@
 			// add listener
 			document.getElementById('fileinput').addEventListener('change', readSingleFile, false);
 			document.getElementById('fileinput').value = '';
-			//document.getElementById('post_reply').value = '';
 			/******************************************************************************/
-			var totalRange = 0xFFF;	// max ADC value
+			var totalRange = 0x1000; // max ADC value
 			var data_array = [];//new Array(12000);
 			var alen = data_array.length;
 			var dlen = 0;	// data length
-/*			// setup array data
-			// initialize test data array - shall be replaced by file read
-			var periodus = 150;	// points per period
-			var amplitude = totalRange/2;
-			for (i=0; i<periodus/2; i++) data_array[i] = amplitude/2+2*i*amplitude/periodus;
-			for (i=0; i<periodus/2; i++) data_array[i+periodus/2] = amplitude*3/2 - 2*i*amplitude/periodus;
-			// replicate this period to the whole data array
-			for (i=periodus; i<alen; i++) data_array[i] = data_array[i%periodus]*(1+(0.5-Math.random())/10);
-*/
+			var data_is_signed = false;
 			/******************************************************************************/
 			/**********************************************/
 			// parse here the data read from file
@@ -66,7 +56,7 @@
 			{	// convert the read data into an array
 				var datlen = dat.length;
 				// get sequence length from user
-				do { seqlen = prompt("Got "+datlen+" samples.\n\nPlease enter the sequence length:\n1 - for 2 channels\n2 - for 4 channels\n4 - for 8 channels)\n", "4");
+				do { seqlen = prompt("Got "+datlen+" samples.\n\nPlease enter the sequence length:\n1 - for 2 channels\n2 - for 4 channels\n4 - for 8 channels)\n", "2");
 				} while ( seqlen!='1' && seqlen!='2' && seqlen!='4' && seqlen!="Cancel");
 
 				seq_len = parseInt(seqlen);
@@ -103,11 +93,8 @@
 				alen = arr.length;
 				dlen = arr[0].length;
 				dindex.end = dlen;
+				selection = [0,0,0,0]; xd = -1;
 				//alert("array length: " + alen + ", data length: " + dlen);
-				// load sample values in the HTML data form
-				/*for (i = 0; i<alen; i++) {
-					document.getElementById('post_reply').value += arr[i][0]+',';//contents;//.substr(1);
-				}*/
 				data_array = arr;
 				// draw the channel selection table
 				prepUI();
@@ -121,8 +108,14 @@
 				if (f) {
 					var r = new FileReader();
 					r.onload = function(e) {
+						// get sign information from user
+						do { data_is_signed = prompt("Please specify if data is signed:\ns - for signed,\nu - for unsigned\n", "s");
+						} while ( data_is_signed!='s' && data_is_signed!='u' && data_is_signed!="Cancel");
 						// convert the data to 16 bit numbers array
-						var dat = new Uint16Array(e.target.result);
+						if ( data_is_signed )
+							var dat = new Int16Array(e.target.result);
+						else
+							var dat = new Uint16Array(e.target.result);
 						//alert( "Got the file: \n"+"name: " + f.name + ",\n"+"type: " + f.type + ",\n"+"size: " + f.size + " bytes, " + dat.length + " samples,\n"+"starts with: " + dat[0]);
 						ParseData(dat);
 					}
@@ -166,13 +159,12 @@
 				elem = "<table style='border:1px solid #A5CFE9' rules='all'><tbody id='dataTable'></tbody></table>";
 				frm.insertAdjacentHTML("BeforeEnd", elem);
 				dtable = document.getElementById("dataTable");
-				elem = "<tr id='tpar' style='background-color: #D5EBF9'><th>Channels</th><th id='tajm'></th></tr>";
+				elem = "<tr id='tpar' style='background-color: #D5EBF9'><th>Channels</th><th id='d_index'></th></tr>";
 				dtable.insertAdjacentHTML("BeforeEnd", elem);
 				for (var i=1; i<=alen; i++) {
 					elem = "<tr><td onclick='GUI_Draw()'><input type='checkbox' id='checkbox"+i+"' name='channel"+(i-1)+"' checked></input></td></tr>";
 					dtable.insertAdjacentHTML("BeforeEnd", elem);	// first column
 					var inpId = document.getElementById("checkbox"+i)
-					//inpId.onclick = "'GUI_Draw();'";
 					elem = "<label for='checkbox" + i + "' style='color:" + plotColor[i-1] + "'> ch"+(i-1)+"</label>";
 					inpId.parentElement.insertAdjacentHTML("BeforeEnd", elem);
 					elem = "<td id='myData"+i+"' align='center'></td>";	// second column
@@ -191,26 +183,51 @@
 					m_down = false;
 					xd = x; yd = y;
 					selection = [x,y,0,0];
-					//alert("selection: " + selection[0] + " " + selection[1] + " " + selection[2] + " " + selection[3]);
-					//document.getElementById("td_selection").innerHTML="Selected: " + selection[0] + ", " + selection[1] + ", " + selection[2] + ", " + selection[3];
 				}
 				if ( m_up==true ) {
 					m_up = false;
-					if ( xd>0 ) {
+					if ( xd>0 && Math.abs(x-selection[0])>25 ) {
 						selection[2] = x; selection[3] = y;
 						SelectionEnd();
-					} else { selection = [0,0,0,0]; }
+					} else { selection = [0,0,0,0]; xd = -1; GUI_Restore(); }
 				}
 				return {x,y};
 			}
 			/**********************************************/
-			function ShowCoordinates(e) {
+			function ShowCoordinates(e)
+			{
 				GetCoordinates(e);
-				//document.getElementById("xycoordinates").innerHTML = "Coordinates: (" + last_coord.x + "," + last_coord.y + ")";
 				// update GUI
 				if (xd>0) {
 					GUI_Restore();
 					ctx2.strokeRect(selection[0],selection[1],last_coord.x-selection[0],last_coord.y-selection[1]);
+				} else
+					ShowMarker();
+			}
+			/**********************************************/
+			function ShowMarker()
+			{
+				if ( selection[2]!=0 || selection[3]!=0 )	return;
+				// update channel values
+				elem = document.getElementById("d_index");
+				// refresh parameter values according to selected coordinate
+				if ( elem && last_coord.x>=0 && last_coord.x<=wid ) {
+					var d_len = dindex.end - dindex.start;
+					var d_spacing = d_len/wid;
+					for (var j=0; j<alen; j++) {
+						var data_index = dindex.start + Math.floor(last_coord.x*d_spacing);
+						document.getElementById("d_index").innerHTML = data_index;
+						val = data_array[j][data_index];
+						document.getElementById("myData"+(j+1)).innerHTML = val;
+					}
+					// display marker
+					canvas2.width = canvas2.width;	// reset plot
+					if (img)	ctx2.drawImage(img,0,0);	// restore img
+					ctx2.beginPath();
+					ctx2.moveTo(last_coord.x,0);
+					ctx2.lineTo(last_coord.x,hei);
+					ctx2.closePath();
+					ctx2.stroke();
 				}
 			}
 			/**********************************************/
@@ -227,7 +244,6 @@
 			function SelectionEnd()
 			{
 				// draw here the transparent rectangular
-				//document.getElementById("td_selection").innerHTML="Selected: " + selection[0] + ", " + selection[1] + ", " + selection[2] + ", " + selection[3];
 				GUI_Restore();
 				if ( selection[2]<0 )	selection[2] = 0;
 				if ( selection[2]>wid )	selection[2] = wid;
@@ -236,7 +252,6 @@
 			}
 			/**********************************************/
 			function ClearSelection() {
-				//document.getElementById("td_selection").innerHTML="";
 				selection = [0,0,0,0];	// clear selection
 				GUI_Draw();
 			}
@@ -286,11 +301,10 @@
 			/**********************************************/
 			function Data_GetRangeY()
 			{
-				var arr = new Array(0,0);
-				ymin = ymax = SPAN/2;
+				var ymin = ymax = 1;
 				for (var j=0; j<alen; j++)
 				{
-					var chckId = document.getElementById("checkbox"+j);
+					var chckId = document.getElementById("checkbox"+(j+1));
 					if ( chckId && chckId.checked )
 					{// plot only checked plots. get min and max values
 						for (var i=0; i<dlen; i++)
@@ -302,38 +316,6 @@
 					}
 				}
 				return {ymin,ymax};
-			}
-			/**********************************************/
-			function DrawGrids()
-			{
-				var d_len = dindex.end - dindex.start;
-				var spacH = wid/d_len;
-				var gr = Data_GetRangeY();
-				var spacingVertical = SPAN*hei/(gr.ymax-gr.ymin);	// make vertical steps of 5
-
-				ctx2.lineWidth = this.lineWidthG;
-				ctx2.strokeStyle = this.gridColor;
-				ctx2.beginPath();
-
-				for(var i=0;i<xlen+1; i++)
-				{
-					temp = i*spacH;
-					ctx2.moveTo(temp,1);
-					ctx2.lineTo(temp,hei);
-				}
-
-				for(var i=0;i<spacingVertical+1; i++)
-				{
-					temp = i*spacingVertical;
-					ctx2.moveTo(1,temp);
-					ctx2.lineTo(wid,temp);
-				}
-
-				ctx2.stroke();
-				ctx2.closePath();
-
-				// draw x- and y-axis indexes
-				this.enumerateIt(NR_X, spacingHorizontal, spacingVertical, gridrangeV);
 			}
 			/**********************************************/
 			function DrawLabels()
@@ -357,13 +339,24 @@
 					if ( ((dindex.start+i)%step)==0 ) {	// draw only one value each step
 						temp = i*spacH;
 						ctx1.fillText( Math.floor(dindex.start+i), 30+temp-10, posY+20);	// offset of 30 due to canvas2 left position
-						ctx2.moveTo(temp,1);
+						// vertical grids
+						ctx2.moveTo(temp,0);
 						ctx2.lineTo(temp,hei);
 					}
 				}
 				// vertical, y-axis
 				var gr = Data_GetRangeY();
-				var r = (gr.ymax-gr.ymin);
+				var totalRange = (gr.ymax-gr.ymin);
+				var verticalCoefficient = hei/(totalRange*1.1);
+					// vertical grids
+					ctx2.moveTo(0,(hei/20));
+					ctx2.lineTo(dlen,(hei/20));
+					// vertical grids
+					ctx2.moveTo(0,(hei/2));
+					ctx2.lineTo(dlen,hei/2);
+					// vertical grids
+					ctx2.moveTo(0,hei - (hei/20));
+					ctx2.lineTo(dlen,hei - (hei/20));
 /*				var spacingVertical = SPAN*hei/r;	// make vertical steps of 5
 				for(var i=0; i<(r/5)+1; i++)
 					ctx1.fillText( rangeV[0]+i*SPAN, 10, posY-i*spV);
@@ -376,7 +369,9 @@
 			{
 				var dlen = dindex.end - dindex.start;
 				var spacingHorizontal = wid/dlen;
-				var verticalCoefficient = hei/totalRange/1.1;
+				var gr = Data_GetRangeY();
+				totalRange = (gr.ymax-gr.ymin);
+				var verticalCoefficient = hei/(totalRange*1.1);
 
 				canvas1.width = canvas1.width;	// reset canvas1
 				canvas2.width = canvas2.width;	// reset canvas2
@@ -389,8 +384,6 @@
 					var ldataId = document.getElementById("myData"+(j+1));
 					//alert("DrawLabels: j = "+j);
 					ldataId.innerHTML = data_array[j][dindex.end-1];
-//					ldataId = document.getElementById("tajm");
-//					ldataId.innerHTML = ConvertMinutesToTime(this.data[this.data.length-1][0]);
 					// check check-box status
 					var elemid = document.getElementById("checkbox"+(j+1));
 					mov = elemid.checked;
@@ -406,7 +399,10 @@
 							if ( dat=='' ) continue;
 							//xp = Math.ceil(i*spacingHorizontal);
 							var xp = i*spacingHorizontal;
-							var yp = hei - hei/20 - dat*verticalCoefficient;
+							if (data_is_signed)
+								var yp = (hei/2) - (dat*verticalCoefficient);
+							else
+								var yp = (hei - hei/20) - (dat*verticalCoefficient);
 							ctx2.lineTo(xp, yp);
 						}
 						ctx2.stroke();
