@@ -215,10 +215,14 @@
 					var d_len = dindex.end - dindex.start;
 					var d_spacing = d_len/wid;
 					for (var j=0; j<alen; j++) {
-						var data_index = dindex.start + Math.floor(last_coord.x*d_spacing);
-						document.getElementById("d_index").innerHTML = data_index;
-						val = data_array[j][data_index];
-						document.getElementById("myData"+(j+1)).innerHTML = val;
+						var elemid = document.getElementById("checkbox"+(j+1));
+						if ( elemid.checked ) {
+							var data_index = dindex.start + Math.floor(last_coord.x*d_spacing);
+							document.getElementById("d_index").innerHTML = data_index;
+							document.getElementById("myData"+(j+1)).innerHTML =  data_array[j][data_index];
+						} else {
+							document.getElementById("myData"+(j+1)).innerHTML =  "";
+						}
 					}
 					// display marker
 					canvas2.width = canvas2.width;	// reset plot
