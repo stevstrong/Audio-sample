@@ -1,7 +1,7 @@
 <!DOCTYPE HTML>
 <html>
-    <head><meta charset="UTF-8"><title>Data GUI</title></head>
-    <body style="font-family: Lekton; font-size: 11pt">
+	<head><meta charset="UTF-8"><title>Data GUI</title></head>
+	<body style="font-family: Lekton; font-size: 11pt">
 		<h3>Graphical display of recorded data from Maple Mini</h3>
 		<table><tr>
 		<td width="50px"></td>
@@ -15,6 +15,7 @@
 		<td><div id="div_file_input" style="margin-left: 20px;">
 			<input type="file" id="fileinput" title="Select file..."</input>
 		</div></td>
+		<td><button type="button" onclick="Audio_SamplePlayer(-1)">Play white noise</button></td>
 		</tr></table>
 		<!-- place holder for canvas -->
 		<div style="position:absolute;left:30px;top:100px">
@@ -159,15 +160,16 @@
 				elem = "<table style='border:1px solid #A5CFE9' rules='all'><tbody id='dataTable'></tbody></table>";
 				frm.insertAdjacentHTML("BeforeEnd", elem);
 				dtable = document.getElementById("dataTable");
-				elem = "<tr id='tpar' style='background-color: #D5EBF9'><th>Channels</th><th id='d_index'></th></tr>";
+				elem = "<tr id='tpar' style='background-color: #D5EBF9'><th>Index</th><th id='d_index' width='70px'></th><th id='hang' width='50px'></th></tr>";
 				dtable.insertAdjacentHTML("BeforeEnd", elem);
 				for (var i=1; i<=alen; i++) {
 					elem = "<tr><td onclick='GUI_Draw()'><input type='checkbox' id='checkbox"+i+"' name='channel"+(i-1)+"' checked></input></td></tr>";
 					dtable.insertAdjacentHTML("BeforeEnd", elem);	// first column
 					var inpId = document.getElementById("checkbox"+i)
-					elem = "<label for='checkbox" + i + "' style='color:" + plotColor[i-1] + "'> ch"+(i-1)+"</label>";
+					elem = "<label for='checkbox" + i + "' style='color:" + plotColor[i-1] + "'> Ch"+(i-1)+"</label>";
 					inpId.parentElement.insertAdjacentHTML("BeforeEnd", elem);
 					elem = "<td id='myData"+i+"' align='center'></td>";	// second column
+					elem += "<td id='hang"+i+"' align='left'><button type='button' onclick='Audio_SamplePlayer("+(i-1)+")'>Play audio</button></td>";	// third column
 					inpId.parentElement.parentElement.insertAdjacentHTML("BeforeEnd", elem);
 				}
 			}
@@ -424,6 +426,28 @@
 				if ( img )	ctx2.drawImage(img,0,0);
 			}
 			/**********************************************/
+			function Audio_SamplePlayer(ch) {
+				var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+				var channels = 1; // Mono
+				// Create an empty mono buffer at the default sample rate
+				mySampleRate = 26000;
+				var frameCount = dindex.end-dindex.start;
+				var myArrayBuffer = audioCtx.createBuffer(channels, frameCount, mySampleRate);
+				// Fill the buffer with data
+				var nowBuffering = myArrayBuffer.getChannelData(0);
+				for (var i = 0; i < frameCount; i++) {
+					// audio needs to be in [-1.0; 1.0]
+					nowBuffering[i] = (data_array[ch][dindex.start+i]/32768);///10;
+				}
+				// Get an AudioBufferSourceNode. This is the AudioNode to use when we want to play an AudioBuffer
+				var source = audioCtx.createBufferSource();
+				// set the buffer in the AudioBufferSourceNode
+				source.buffer = myArrayBuffer;
+				// connect the AudioBufferSourceNode to the destination so we can hear the sound
+				source.connect(audioCtx.destination);
+				// start the source playing
+				source.start();
+			}
 		</script>
 		</div>
 	</body>
