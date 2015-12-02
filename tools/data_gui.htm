@@ -8,14 +8,16 @@
 		<!--td width="150px"><div id="xycoordinates" style="visibility:hidden"></div></td-->
 		<!--td width="200px"><div id="td_selection" style="visibility:hidden"></div></td-->
 		<!--td><button type="button" onclick="ClearSelection()">Clear selection</button></td-->
-		<td width="150px"><button type="button" onclick="ZoomSelection()">Zoom selection</button></td>
+		<!--td width="150px"><button type="button" onclick="ZoomSelection()">Zoom selection</button></td-->
 		<!--td width="200px"><div id="dindex_select""></div></td-->
 		<!--td width="200px"><div id="range_y""></div></td-->
 		<td width="100px"><button type="button" onclick="ZoomIn()">Zoom in</button></td>
 		<td width="100px"><button type="button" onclick="ZoomOut()">Zoom out</button></td>
 		<td width="200px"><button type="button" onclick="ZoomReset()">Zoom reset</button></td>
 		<td width="350px"><input type="file" id="fileinput" title="Select file..."</input></td>
-		<td width="150px"><button type="button" onclick="Audio_SamplePlayer(-1)">Play white noise</button></td>
+		<td><button type="button" onclick="Audio_SamplePlayer(-1)">Play white noise</button></td>
+		<td> Sampling frequency: </td>
+		<td><input type="number" id="sampleRate" style="width:70px" min="0" max="48000"  value="26000" step="1000"> Hz</td>
 		</tr></table>
 		<!-- place holder for canvas -->
 		<div style="position:absolute;left:30px;top:100px">
@@ -24,6 +26,7 @@
 			// default canvas sizes
 			var canvasWidth = 1200;
 			var canvasHeigth = 600;
+			var canvas2Heigth = 300;
 			// labels
 			var fSize = 10;
 			var lineWidthG = 1;
@@ -31,15 +34,14 @@
 			var gridColor = 'rgba(0,0,0,0.1)'; 
 			var bgColor = 'rgba(255,255,255,1)';
 			var plotColor = ['#FF0000', '#00CC00', '#0000FF', '#FF8800', '#00CC88', '#8800FF', '#CCCC00', '#0088CC', '#CC00CC'];
+			var canvas2_img;
 			/******************************************************************************/
 			// add canvas and data placeholder 
 			document.write("<canvas id='myCanvas' width="+canvasWidth+" height="+canvasHeigth+" style='z-index: 1; box-shadow: 0px 0px 10px 15px #D5D5D5'" +
-			" onmousemove='ShowCoordinates(event)' onmouseup='mouse_up(event)' onclick='ClearSelection()'></canvas>");
-			document.write("<canvas id='canvas_2' width="+(canvasWidth-300)+" height="+(canvasHeigth-100)+
+			" onmousemove='ShowCoordinates(event)' onmouseup='mouse_up(event)' onclick='ZoomUpdate()'></canvas>");
+			document.write("<canvas id='canvas_2' width="+(canvasWidth-300)+" height="+canvas2Heigth+
 			" style='z-index: 2; position:absolute;left:30px;top:30px;border:1px solid;box-shadow: inset 0px 0px 10px 5px #D5D5D5'" +
-			" onmousemove='ShowCoordinates(event)' onmouseout='cnvs_clearCoordinates()' onmousedown='mouse_down(event)' onmouseup='mouse_up(event)'></canvas>");
-/*			document.write("<div id='container'><textarea id='post_reply' rows='4' cols='100' placeholder='Content goes here'"+
-				" style='position:absolute;left:0px;top:"+canvasHeigth+"px; width:"+canvasWidth+"px; height:400px;'></textarea></div>");*/
+			" onmousemove='ShowCoordinates(event)' onmousedown='mouse_down(event)' onmouseup='mouse_up(event)'></canvas>");
 			// add listener
 			document.getElementById('fileinput').addEventListener('change', readSingleFile, false);
 			document.getElementById('fileinput').value = '';
@@ -142,8 +144,6 @@
 			var ctx2 = canvas2.getContext("2d");
 			var hei = canvas2.height;
 			var wid = canvas2.width;
-			var dataURL;
-			var img;	// store GUI as img
 			/******************************************************************************/
 			// display related functions
 			/******************************************************************************/
@@ -173,67 +173,66 @@
 				ZoomReset();
 			}
 			/**********************************************/
-			function GetCoordinates(e)
-			{
-				var x = e.clientX-60;	//	var x = e.clientX-30;
-				var y = e.clientY-130;
-				last_coord.x = x;
-				last_coord.y = y;
-				// check mouse up or down event
-				if ( m_down==true ) {
-					m_down = false;
-					xd = x; yd = y;
-					selection = [x,y,0,0];
-				}
-				if ( m_up==true ) {
-					m_up = false;
-					if ( xd>0 && Math.abs(x-selection[0])>25 ) {
-						selection[2] = x; selection[3] = y;
-						SelectionEnd();
-					} else { selection = [0,0,0,0]; xd = -1; GUI_Restore(); }
-				}
-				return {x,y};
+			function ShowSelection() {
+				// draw here the transparent rectangular
+				GUI_Restore();
+				var sel_x = last_coord.x;
+				if ( sel_x<0 )		sel_x = 0;
+				if ( sel_x>wid )	sel_x = wid;
+				ctx2.strokeRect(selection[0],0,sel_x-selection[0],hei);
 			}
 			/**********************************************/
-			function ShowCoordinates(e)
-			{
-				GetCoordinates(e);
-				// update GUI
-				if (xd>0) {
-					GUI_Restore();
-					ctx2.strokeRect(selection[0],0,last_coord.x-selection[0],hei);
-				} else
-					ShowMarker();
-			}
-			/**********************************************/
-			function ShowMarker()
-			{
-				if ( selection[2]!=0 || selection[3]!=0 )	return;
+			function ShowMarker() {
 				// update channel values
-				elem = document.getElementById("d_index");
+				var elem = document.getElementById("d_index");
 				// refresh parameter values according to selected coordinate
 				if ( elem && last_coord.x>=0 && last_coord.x<=wid ) {
-					var d_len = dindex.end - dindex.start;
-					var d_spacing = d_len/wid;
+					var d_spacing = (dindex.end - dindex.start)/wid;
 					for (var j=0; j<alen; j++) {
-						var elemid = document.getElementById("checkbox"+(j+1));
-						if ( elemid.checked ) {
+						if ( document.getElementById("checkbox"+(j+1)).checked ) {
 							var data_index = dindex.start + Math.floor(last_coord.x*d_spacing);
-							document.getElementById("d_index").innerHTML = data_index;
+							elem.innerHTML = data_index;
 							document.getElementById("myData"+(j+1)).innerHTML =  data_array[j][data_index];
 						} else {
 							document.getElementById("myData"+(j+1)).innerHTML =  "";
 						}
 					}
-					// display marker
-					canvas2.width = canvas2.width;	// reset plot
-					if (img)	ctx2.drawImage(img,0,0);	// restore img
-					ctx2.beginPath();
+					//alert("ShowMarker: before restore");
+					GUI_Restore();
+					//alert("ShowMarker: after restore");
+					// draw marker
 					ctx2.moveTo(last_coord.x,0);
 					ctx2.lineTo(last_coord.x,hei);
-					ctx2.closePath();
 					ctx2.stroke();
+					//alert("ShowMarker: after stroke");
 				}
+			}
+			/**********************************************/
+			function ShowCoordinates(e)
+			{	// get coordinates
+				x = e.clientX-60;	//	var x = e.clientX-30;
+				y = e.clientY-130;
+				last_coord.x = x;	//	var x = e.clientX-30;
+				last_coord.y = y;
+				// check mouse up or down event
+				if ( m_down==true ) {
+					m_down = false;
+					xd = x; yd = y;
+					selection = [xd,yd,0,0];
+				}
+				if ( m_up==true ) {
+					m_up = false;
+					if ( x<0 )		x = 0;
+					if ( x>wid )	x = wid;
+					if ( xd>0 && Math.abs(x-selection[0])>25 ) {
+						selection[2] = x; selection[3] = last_coord.y;
+						ZoomSelection();
+					}
+					xd = -1; selection = [0,0,0,0]; return;
+				}
+				// update GUI
+				if (xd>0)	ShowSelection();
+				else		ShowMarker();
 			}
 			/**********************************************/
 			function mouse_down(e) {
@@ -246,28 +245,7 @@
 				ShowCoordinates(e);
 			}
 			/**********************************************/
-			function SelectionEnd()
-			{
-				// draw here the transparent rectangular
-				GUI_Restore();
-				if ( selection[2]<0 )	selection[2] = 0;
-				if ( selection[2]>wid )	selection[2] = wid;
-				ctx2.strokeRect(selection[0],0,selection[2]-selection[0],hei);
-				xd = -1; yd = -1;
-			}
-			/**********************************************/
-			function ClearSelection() {
-				selection = [0,0,0,0];	// clear selection
-				GUI_Draw();
-			}
-			/**********************************************/
-			function cnvs_clearCoordinates() {
-			}
-			/**********************************************/
 			function ZoomUpdate() {
-				d_len = dindex.end - dindex.start;
-				//document.getElementById("dindex_select").innerHTML="dindex start: " + dindex.start + ", end: " + dindex.end;
-				//alert("index start: " + dindex.start + ", end: " + dindex.end + ", len: " + d_len);
 				GUI_Draw();
 				selection = [0,0,0,0];
 			}
@@ -310,8 +288,7 @@
 				ZoomUpdate();
 			}
 			/**********************************************/
-			function Data_GetRangeY()
-			{
+			function Data_GetRangeY() {
 				var ymin = ymax = 1;
 				for (var j=0; j<alen; j++)
 				{
@@ -355,15 +332,10 @@
 					}
 				}
 				// vertical, y-axis
-					// vertical grids
-					ctx2.moveTo(0,(hei/20));
-					ctx2.lineTo(dlen,(hei/20));
-					// vertical grids
-					ctx2.moveTo(0,(hei/2));
-					ctx2.lineTo(dlen,hei/2);
-					// vertical grids
-					ctx2.moveTo(0,hei - (hei/20));
-					ctx2.lineTo(dlen,hei - (hei/20));
+					// horizontal grids
+					ctx2.moveTo(0,(hei/20));	ctx2.lineTo(dlen,(hei/20));
+					ctx2.moveTo(0,(hei/2));		ctx2.lineTo(dlen,hei/2);
+					ctx2.moveTo(0,hei - (hei/20));	ctx2.lineTo(dlen,hei - (hei/20));
 /*				var spacingVertical = SPAN*hei/r;	// make vertical steps of 5
 				for(var i=0; i<(r/5)+1; i++)
 					ctx1.fillText( rangeV[0]+i*SPAN, 10, posY-i*spV);
@@ -414,22 +386,21 @@
 						ctx2.closePath();
 					}
 				}
-				dataURL = canvas2.toDataURL();
-				img = new Image();
-				img.src = dataURL;
+				// save image
+				canvas2_img = new Image();
+				canvas2_img.src = canvas2.toDataURL();
 			}
 			/**********************************************/
-			function GUI_Restore()
-			{
+			function GUI_Restore() {
 				canvas2.width = canvas2.width;	// reset plot
-				if ( img )	ctx2.drawImage(img,0,0);
+				if ( canvas2_img )	ctx2.drawImage(canvas2_img,0,0);
 			}
 			/**********************************************/
 			function Audio_SamplePlayer(ch) {
 				var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 				var channels = 1; // Mono
 				// Create an empty mono buffer at the default sample rate
-				mySampleRate = 26000;
+				mySampleRate = document.getElementById("sampleRate").value;
 				var frameCount = dindex.end-dindex.start;
 				if (frameCount<=0) frameCount = mySampleRate;
 				var myArrayBuffer = audioCtx.createBuffer(channels, frameCount, mySampleRate);
