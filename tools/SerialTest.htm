@@ -1,0 +1,111 @@
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<title>jUART Serial Port Test</title>
+	</head>
+<body>
+	<object id="plugin0" type="application/x-juart" width="10" height="10" >
+	<param name="onload" value="pluginLoaded"></param>
+	</object><br />
+	<h2>jUART Serial Port Test</h2><br/>
+	<div>
+		<h3>Select serial port options</h3>
+		<table>
+			<tr><td>Serial port: </td>
+				<td><select id="portList"></select></td>
+				<td><button type="button" onclick="OpenPort()">Open port</button></td>
+			</tr>
+			<tr><td>Bitrate: </td>
+				<td><select id="bitRate">
+					<option value="4800">4800</option>
+					<option value="9600">9600</option>
+					<option value="19200">19200</option>
+					<option value="38400">38400</option>
+					<option value="76800">76800</option>
+					<option value="115200">115200</option>
+					<option value="250000">250000</option>
+				</select></td>
+			</tr>
+			<tr><td>Data bits: </td>
+				<td><input type="number" id="dataBits" style="width:3em" value="8" min="7" max="8"></input></td>
+			</tr>
+			<tr><td>Parity: </td>
+				<td><select id="parity">
+					<option value="0">none</option>
+					<option value="2">even</option>
+					<option value="1">odd</option>
+				</select></td>
+			</tr>
+			<tr><td>Stop bits: </td>
+				<td><select id="stopBits">
+					<option value="0">1</option>
+					<option value="1">1.5</option>
+					<option value="2">2</option>
+				</select></td>
+			</tr>
+		</table>
+	</div><br>
+	<div><textarea id="sData" rows="20" cols="80" placeholder="Here comes the data received from the serial port"></textarea></div>
+
+ 	<script type="text/javascript">
+		function plugin0() {
+			var elem = document.getElementById("plugin0");
+			return elem;
+		}
+		var plugin = plugin0;
+		var ser;
+
+		function recv(bytes, size) {
+			dat = document.getElementById("sData");
+			for(var i=0;i<size;++i) {
+				//ser.send(bytes[i]);	// send data back to source
+				dat.value += String.fromCharCode(bytes[i]);	// display data
+			}
+		}
+		function OpenPort() {
+			if ( ser.is_open() )	ser.close();
+			sPort = document.getElementById("portList").value;
+			bRate = document.getElementById("bitRate").value;
+			dBits = document.getElementById("dataBits").value;
+			par = document.getElementById("parity").value;
+			sBits = document.getElementById("stopBits").value;
+			msg = sPort+", Baud: "+bRate+", data bits: "+dBits
+				+", parity: "+document.getElementById("parity").options[document.getElementById("parity").selectedIndex].text
+				+", stop bits: "+document.getElementById("stopBits").options[document.getElementById("stopBits").selectedIndex].text;
+			console.log("Opening "+msg);
+/*			ser.open(sPort);// Open a port
+			ser.set_option(bRate,par,dBits,0,sBits);// Set port options 
+			ser.recv_callback(recv); // Callback function for recieve data
+*/
+			document.getElementById("sData").placeholder = "waiting for data from "+msg;
+		}
+		function ListPorts() {
+			ser = plugin().Serial;// Get a Serial object
+			ports = ser.getports();
+			console.log( "Available ports: " + ports);
+			elem = document.getElementById("portList");
+			for ( i=0; i<ports.length; i++) {	// add serial port options
+				var opt = document.createElement("option");
+				opt.text = ports[i];
+				elem.add(opt);
+			}
+			document.getElementById("bitRate").value = "115200";	// set default option
+		}
+/*		function pluginLoaded() {
+			ser = plugin().Serial;// Get a Serial object
+			ser.open("COM1");// Open a port
+			ser.set_option(115200,0,8,0,0);// Set port options 
+			ser.recv_callback(recv); // Callback function for recieve data
+		}*/
+		function pluginValid() {
+			if(plugin().valid) {
+				console.log(plugin().echo("This plugin seems to be working!"));
+			} else {
+				alert("Plugin is not working :(");
+			}
+		}
+		pluginValid();
+		ListPorts();
+	</script>
+</body>
+</html>
