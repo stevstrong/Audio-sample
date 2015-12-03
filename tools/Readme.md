@@ -5,5 +5,6 @@ The needed DLL: `/bin/Windows/npjUART.dll`
 
 For installation, either
 - copy `/bin/Windows/npjUART.dll` to `C:\Program Files (x86)\Mozilla Firefox\plugins`
+
 or
 - register the plugin DLL with regsvr32.exe: `regsvr32 npPluginTemplate.dll`
