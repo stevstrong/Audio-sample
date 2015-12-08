@@ -336,7 +336,7 @@
 				var gr = Data_GetRangeY();
 				var posX = canvas2.offsetLeft - 30;
 				ctx1.fillText( Math.floor(gr.ymax), posX, hei/20 + canvas2.offsetTop); // top grid label
-				ctx1.fillText( Math.floor((gr.ymax+Math.abs(gr.ymin))/2), posX, hei/2 + canvas2.offsetTop); // middle grid label
+				ctx1.fillText( Math.floor((gr.ymax+gr.ymin)/2), posX, hei/2 + canvas2.offsetTop); // middle grid label
 				ctx1.fillText( Math.floor(gr.ymin), posX, hei - (hei/20) + canvas2.offsetTop); // bottom grid label
 				// horizontal grid lines
 				ctx2.moveTo(0,(hei/20));	ctx2.lineTo(dlen,(hei/20)); // top grid line
