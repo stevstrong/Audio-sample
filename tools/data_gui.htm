@@ -17,7 +17,7 @@
 		<td width="350px"><input type="file" id="fileinput" title="Select file..."</input></td>
 		<td><button type="button" onclick="Audio_SamplePlayer(-1)">Play white noise</button></td>
 		<td> Sampling frequency: </td>
-		<td><input type="number" id="sampleRate" style="width:70px" min="0" max="48000"  value="26000" step="1000"> Hz</td>
+		<td><input type="number" id="sampleRate" style="width:70px" min="0" max="48000" value="26000" step="1000"> Hz</td>
 		</tr></table>
 		<!-- place holder for canvas -->
 		<div style="position:absolute;left:30px;top:100px">
@@ -40,7 +40,7 @@
 			document.write("<canvas id='myCanvas' width="+canvasWidth+" height="+canvasHeigth+" style='z-index: 1; box-shadow: 0px 0px 10px 15px #D5D5D5'" +
 			" onmousemove='ShowCoordinates(event)' onmouseup='mouse_up(event)' onclick='ZoomUpdate()'></canvas>");
 			document.write("<canvas id='canvas_2' width="+(canvasWidth-300)+" height="+canvas2Heigth+
-			" style='z-index: 2; position:absolute;left:30px;top:30px;border:1px solid;box-shadow: inset 0px 0px 10px 5px #D5D5D5'" +
+			" style='z-index: 2; position:absolute;left:40px;top:30px;border:1px solid;box-shadow: inset 0px 0px 10px 5px #D5D5D5'" +
 			" onmousemove='ShowCoordinates(event)' onmousedown='mouse_down(event)' onmouseup='mouse_up(event)'></canvas>");
 			// add listener
 			document.getElementById('fileinput').addEventListener('change', readSingleFile, false);
@@ -264,7 +264,7 @@
 			function ZoomIn() {
 				// transpose the GUI selection coordinates to array indexes and amplitude
 				var d_len = dindex.end - dindex.start;
-				if ( d_len<100 ) return;  
+				//if ( d_len<100 ) return;  
 				dindex.start = dindex.start + Math.round(d_len/4);
 				dindex.end = dindex.end - Math.round(d_len/4);
 				d_len = dindex.end - dindex.start;
@@ -289,15 +289,17 @@
 			}
 			/**********************************************/
 			function Data_GetRangeY() {
-				var ymin = ymax = 1;
+				var ymin = 0x10000;
+				var ymax = 1;
+				var d_len = dindex.end - dindex.start;
 				for (var j=0; j<alen; j++)
 				{
 					var chckId = document.getElementById("checkbox"+(j+1));
 					if ( chckId && chckId.checked )
 					{// plot only checked plots. get min and max values
-						for (var i=0; i<dlen; i++)
+						for (var i=0; i<d_len; i++)
 						{
-							var dat = data_array[j][i];	//*1.0;	// make float
+							var dat = data_array[j][dindex.start+i];	//*1.0;	// make float
 							if ( dat<ymin ) ymin = dat;	// get minimum value
 							if ( dat>ymax ) ymax = dat;	// get maximum value
 						}
@@ -317,7 +319,6 @@
 				if (st[0]>=5)	step = 5*Math.pow(10,st.length-1);
 				else if (st[0]>=2)	step = 2*Math.pow(10,st.length-1);
 				else step = Math.pow(10,st.length-1);
-				//ctx1.fillStyle = textColor;
 				ctx1.fillStyle = "black";
 				ctx2.lineWidth = lineWidthG;
 				ctx2.strokeStyle = gridColor;
@@ -325,21 +326,22 @@
 				for(var i=0; i<=d_len; i++) {
 					if ( ((dindex.start+i)%step)==0 ) {	// draw only one value each step
 						temp = i*spacH;
-						ctx1.fillText( Math.floor(dindex.start+i), 30+temp-10, posY+20);	// offset of 30 due to canvas2 left position
-						// vertical grids
+						ctx1.fillText( Math.floor(dindex.start+i), 40+temp-10, posY+20);	// offset of 30 due to canvas2 left position
+						// vertical grid lines
 						ctx2.moveTo(temp,0);
 						ctx2.lineTo(temp,hei);
 					}
 				}
-				// vertical, y-axis
-					// horizontal grids
-					ctx2.moveTo(0,(hei/20));	ctx2.lineTo(dlen,(hei/20));
-					ctx2.moveTo(0,(hei/2));		ctx2.lineTo(dlen,hei/2);
-					ctx2.moveTo(0,hei - (hei/20));	ctx2.lineTo(dlen,hei - (hei/20));
-/*				var spacingVertical = SPAN*hei/r;	// make vertical steps of 5
-				for(var i=0; i<(r/5)+1; i++)
-					ctx1.fillText( rangeV[0]+i*SPAN, 10, posY-i*spV);
-				//*/
+				// vertical, y-axis labels
+				var gr = Data_GetRangeY();
+				var posX = canvas2.offsetLeft - 30;
+				ctx1.fillText( Math.floor(gr.ymax), posX, hei/20 + canvas2.offsetTop); // top grid label
+				ctx1.fillText( Math.floor((gr.ymax+Math.abs(gr.ymin))/2), posX, hei/2 + canvas2.offsetTop); // middle grid label
+				ctx1.fillText( Math.floor(gr.ymin), posX, hei - (hei/20) + canvas2.offsetTop); // bottom grid label
+				// horizontal grid lines
+				ctx2.moveTo(0,(hei/20));	ctx2.lineTo(dlen,(hei/20)); // top grid line
+				ctx2.moveTo(0,(hei/2));		ctx2.lineTo(dlen,hei/2); // middle grid line
+				ctx2.moveTo(0,hei - (hei/20));	ctx2.lineTo(dlen,hei - (hei/20)); // bottom grid line
 				ctx1.stroke();
 				ctx2.stroke();
 			}
@@ -382,6 +384,8 @@
 							var yp = 0.95*hei - (dat-gr.ymin)*verticalCoefficient;
 							ctx2.lineTo(xp, yp);
 						}
+						// draw last point if not last data index
+						if ( i<dlen )	ctx2.lineTo(i*spacingHorizontal, (0.95*hei - ((data_array[j][dindex.start+i])-gr.ymin)*verticalCoefficient));
 						ctx2.stroke();
 						ctx2.closePath();
 					}
