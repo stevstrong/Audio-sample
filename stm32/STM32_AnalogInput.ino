@@ -8,7 +8,6 @@
 	---------------------------------------------------------------------------------
 */
 
-
 #include <libmaple/adc.h>
 #include <libmaple/dma.h>
 #include <SPI.h>
@@ -26,8 +25,8 @@
 #define SAMPLES_PER_SEQUENCE	4	// must be power of 2 !!!
 // Set the ADC input channel sequences (left will be first)
 // channel 17 = Vrefint, only available on ADC1, can be used for tests
-uint8_t ADC1_Sequence[SAMPLES_PER_SEQUENCE] = {17,17,0,1};
-uint8_t ADC2_Sequence[SAMPLES_PER_SEQUENCE] = {1,0,1,0};
+uint8_t ADC1_Sequence[SAMPLES_PER_SEQUENCE] = {0,2,4,6};
+uint8_t ADC2_Sequence[SAMPLES_PER_SEQUENCE] = {1,3,5,7};
 
 // SD card chip select pin
 const uint8_t chipSelect = 31;
@@ -58,17 +57,14 @@ const uint8_t chipSelect = 31;
 // calculate some relevant values
 #define NEEDED_SEQUENCES		((SAMPLING_FREQUENCY*RECORDING_TIME)/1000)
 #define NEEDED_BLOCKS			(NEEDED_SEQUENCES/SEQUENCES_PER_BLOCK)
-// the SW can only count and record a complete number of blocks.
-// so we need to round up the number of sequences to match a complete block
-#if (NEEDED_SEQUENCES%SEQUENCES_PER_BLOCK)>0
+// the SW can only record an even number of blocks.
+#if (NEEDED_BLOCKS%2)>0
  #define TOTAL_BLOCKS 			(NEEDED_BLOCKS+1)
 #else
  #define TOTAL_BLOCKS 			(NEEDED_BLOCKS)
 #endif
 #define TOTAL_SEQUENCES			(TOTAL_BLOCKS*SEQUENCES_PER_BLOCK)
 #define TOTAL_SAMPLES			(TOTAL_SEQUENCES*SAMPLES_PER_SEQUENCE)
-
-//#define BLOCK_COUNT				(TOTAL_BLOCKS)
 
 // timing related constants
 #define TIMER_PRESCALER			4	// to divide the system clock, appropriate for frequencies <1kHz
@@ -106,7 +102,6 @@ volatile uint32_t dma_irq_counter;
 volatile uint32_t dma_isr;	// must not be global, make it local later
 // signalling for lower and upper buffer status
 volatile uint8_t buff0_stored, buff1_stored;
-
 /********************************************************************/
 // file system
 SdFat sd;
@@ -298,16 +293,21 @@ void SD_Init(void)
 }
 /*****************************************************************************/
 /*****************************************************************************/
-void SD_buffer_to_card(int buff)
+void SD_buffer_to_card(uint8_t buff)
 {
-//return;	//debug
-	if ( buff!=1 && buff!=0) { /*Serial.println(F("Invalid buffer, cannot copy!"));*/ return; }
-	buff = buff*SAMPLES_PER_BLOCK;	// starting address of the current block where to copy from
-	//	copy data from buffer to cache
-	for ( int i=0; i<SAMPLES_PER_BLOCK; i++ )
-	{
-		pCache[i] = adc_buffer[i+buff];
+	uint32_t * sp = adc_buffer +(buff*SAMPLES_PER_BLOCK);	// source pointer
+	uint32_t * dp = pCache + (buff*SAMPLES_PER_BLOCK/2);	// destination pointer
+	uint32_t tmp = 0;
+	//	copy data from source buffer to cache
+	for ( uint_16 i=0; i<SAMPLES_PER_BLOCK; i++ ) {
+		uint32_t val = *sp++;
+		val = (val&0x0000FFFF) - (val/0x10000);	// ADC0 value (low word) - ADC1 value (high word)
+		if ( (i&0x0001) )
+			*dp++ = (uint32_t)(val<<16) + tmp;	// store value combined with that of previous reading
+		else
+			tmp = val&0x0000FFFF;	// save the lower word for the next writing
 	}
+	if ( buff==0 ) return;
 	// store cache to card, write a 512 byte block
 //	uint32_t tw = micros();
 	if (!sd.card()->writeData((const uint8_t*)pCache)) {
@@ -382,8 +382,6 @@ void loop()
 	uint32_t tout;	// time-out
 	uint32_t dma_irq_full_complete_count = 0;
 	uint32_t dma_irq_half_complete_count = 0;
-//	uint32_t timer3_uif = 0;
-//	int32_t data_cnt = (DMA1->regs->CNDTR1 - SAMPLES_PER_SEQUENCE);
 
 	uint32_t tstart = micros();
 	// let timer run - do this just before generating an update trigger by SW
@@ -397,20 +395,6 @@ void loop()
 		// each ADC sequence is sampled triggered by TIMER3 event.
 		// The DMA data counter should thereby decrease by SAMPLES_PER_SEQUENCE
 		while ( (--tout)>0 ) {
-/*debug
-			// check timer 3 update flag and count pulses
-			if ( (TIMER3->regs).adv->SR&TIMER_SR_UIF ) {
-				(TIMER3->regs).adv->SR = 0;
-				gpio_toggle_bit(GPIOA,8);	//debug - measure sequence sampling and transfer time
-				timer3_uif++;
-			}
-			// check DMA data counter and count pulses
-			if ( DMA1->regs->CNDTR1==data_cnt ) {
-				gpio_toggle_bit(GPIOA,8);	//debug - measure sequence sampling and transfer time
-				data_cnt -= SAMPLES_PER_SEQUENCE;
-				if ( data_cnt<=0 ) data_cnt = SAMPLES_PER_BUFFER;
-			}
-*/
 			// check buffer status and push data to card if necessary
 			if ( dma_irq_half_complete ) {
 				dma_irq_half_complete = 0;
