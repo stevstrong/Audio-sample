@@ -1,111 +1,264 @@
 <html>
-	<head>
-		<meta charset="UTF-8">
-		<title>jUART Serial Port Test</title>
-	</head>
+<head>
+	<meta charset="UTF-8">
+	<title>jUART Serial Port Test</title>
+</head>
 <body>
-	<object id="plugin0" type="application/x-juart" width="10" height="10" >
-	<param name="onload" value="pluginLoaded"></param>
-	</object><br />
-	<h2>jUART Serial Port Test</h2><br/>
-	<div>
-		<h3>Select serial port options</h3>
-		<table>
-			<tr><td>Serial port: </td>
-				<td><select id="portList"></select></td>
-				<td><button type="button" onclick="OpenPort()">Open port</button></td>
-			</tr>
-			<tr><td>Bitrate: </td>
-				<td><select id="bitRate">
-					<option value="4800">4800</option>
-					<option value="9600">9600</option>
-					<option value="19200">19200</option>
-					<option value="38400">38400</option>
-					<option value="76800">76800</option>
-					<option value="115200">115200</option>
-					<option value="250000">250000</option>
-				</select></td>
-			</tr>
-			<tr><td>Data bits: </td>
-				<td><input type="number" id="dataBits" style="width:3em" value="8" min="7" max="8"></input></td>
-			</tr>
-			<tr><td>Parity: </td>
-				<td><select id="parity">
-					<option value="0">none</option>
-					<option value="2">even</option>
-					<option value="1">odd</option>
-				</select></td>
-			</tr>
-			<tr><td>Stop bits: </td>
-				<td><select id="stopBits">
-					<option value="0">1</option>
-					<option value="1">1.5</option>
-					<option value="2">2</option>
-				</select></td>
-			</tr>
-		</table>
-	</div><br>
-	<div><textarea id="sData" rows="20" cols="80" placeholder="Here comes the data received from the serial port"></textarea></div>
+	<object id="plugin0" type="application/x-juart"><param name="onload" value="pluginLoaded"></param></object>
+	<h2>jUART Serial Port Test</h2>
+	<table><tr><td>
+	<table><tr>
+	<td><fieldset><legend>Serial port handling</legend><table>
+		<tr><td><button type="button" onclick="ListPorts()">List ports</button></td>
+			<td><button type="button" onclick="OpenPort()">Open port</button></td>
+			<td><button type="button" onclick="ForceSelectPort()">Force open port: </button><input type="number" id="forcedPort" style="width:3em" value="4" min="1" max="15"></input></td></tr>
+		<tr><td>Serial port </td><td><select id="portList"></select></td></tr>
+		<tr><td>Bitrate </td><td><select id="bitRate">
+				<option value="4800">4800</option><option value="9600">9600</option><option value="19200">19200</option><option value="38400">38400</option>
+				<option value="76800">76800</option><option value="115200">115200</option><option value="250000">250000</option><option value="500000">500000</option>
+			</select></td></tr>
+		<tr><td>Data bits </td><td><input type="number" id="dataBits" style="width:3em" value="8" min="7" max="8"></input></td></tr>
+		<tr><td>Parity </td><td><select id="parity">
+				<option value="0">none</option><option value="2">even</option><option value="1">odd</option>
+			</select></td></tr>
+		<tr><td>Stop bits </td><td><select id="stopBits">
+				<option value="0">1</option><option value="1">1.5</option><option value="2">2</option>
+			</select></td></tr>
+	</table></fieldset></td>
+	<td></td>
+	<td style="vertical-align:top;"><fieldset><legend>Recording configuration</legend><table>
+		<tr><td>Recording time </td><td><input type="number" id="rec_time" style="width:4em" value="1000" min="100" max="10000" step="100"> ms</input></td></tr>
+		<tr><td>Sampling frequency </td><td><input type="number" id="sampling_freq" style="width:3em" value="26" min="10" max="48"> kHz</input></td></tr>
+		<tr><td>Samples per sequence: </td><td><select id="samples_per_seq">
+				<option value="1">1</option>
+				<option value="2">2</option>
+				<option value="4">4</option>
+			</select></td></tr>
+		<tr height="10%"><td><hr></td></tr>
+		<tr><td><button type="button" onclick="SendParams()">Send configuration</button></td></tr>
+		<!--tr><td><button type="button" onclick="SendGo()">Start rec</button></td></tr-->
+	</table></fieldset></td></tr></table></td></tr>
+	<!--hr width="600px" align="left"-->
+	<tr><td><fieldset><legend>Serial Tx</legend>
+		<input type="text" id="sendData" rows="20" style="width:100%;font-family:courier" placeholder="Here comes the data to send over the serial port"></input><br>
+		<div style="display:flex;flex-direction:row;justify-content:space-between">
+		<div><label><input type="checkbox" id="addNL"> append '\n'</input></label><button type="button" style="width:100px" onclick="SendData()">Send</button></div>
+		<button type="button" onclick="SendGo()">Start recording</button><button type="button" onclick="SendGet()">Get recorded data</button></div>
+	</fieldset></td></tr>
+	<tr><td><fieldset><legend>Serial Rx</legend><div style="display:flex;flex-direction:row;justify-content:space-between">
+		<button type="button" style="vertical-align:top" onclick="ClearRxData()">Clear data</button>
+		<div><progress id="myPrgBar" value="0" max="100"></progress><a id="prbTxt" style="padding-left:10px"></a></div><a id="binData" download="data.bin">Save data</a></div>
+		<textarea id="recData" rows="20" style="width:600px;resize:none" placeholder="Here comes the data received from the serial port"></textarea>
+	</fieldset></td></tr>
+	</table>
 
  	<script type="text/javascript">
-		function plugin0() {
-			var elem = document.getElementById("plugin0");
-			return elem;
-		}
-		var plugin = plugin0;
+		var plugin = document.getElementById("plugin0");;
 		var ser;
-
-		function recv(bytes, size) {
-			dat = document.getElementById("sData");
-			for(var i=0;i<size;++i) {
-				//ser.send(bytes[i]);	// send data back to source
-				dat.value += String.fromCharCode(bytes[i]);	// display data
+		var tim; var bin_rec = false;
+		var rec_buff;	var rec_index = 0; var crc = 0;
+		var prg = document.getElementById("myPrgBar");
+		
+		function ParseRxData() {
+			/* typedef struct {
+				uint8_t byte0;	// 0x41
+				uint16_t len;	// length of forthcoming data block
+				uint16_t crc;	// 16 bit CRC = sum of previous data bytes ^0xFF so that the sum = 0xffff.
+			} tx_pack_t;
+			uint8_t data[512];	// max 512 bytes data */
+			// just log the received data and reply ACK
+				d = "";
+				for (i=0;i<rec_index;i++) {
+					b = rec_buff[i];	crc += b;	// just add data to buffer, and update crc
+					d += " 0x" + b.toString(16);
+				}
+				console.log("received binary data: "+d);
+				{ bin_rec = false; console.log("switched to string reception"); return true;}
+		return true;
+			// parse received data from rec_buff. check header bytes
+			if ( rec_buff[0]!=0x41 ) { console.log("wrong header byte: 0x"+rec_buff[0].toString(16)); return false;}
+			if ( crc!=0xFFFF )	{ console.log("wrong crc: 0x"+crc.toString(16)); return false}
+			pLen =  rec_buff[1] + 256*rec_buff[2]; console.log("packet length: "+pLen);
+			if ( pLen==0 ) { bin_rec = false; console.log("switched to string reception"); return true;}
+			// binary data handling. convert and show it in the recData element
+			var d = "";
+			for(i=0;i<pLen;i++) {
+				b = rec_buff[i+3];
+				//d += String.fromCharCode(rec_buff[i]);	// display data
+				d += "0x"+b.toString(16)+',';	// display data
+				if ( (i%8)==0 ) d += '\n';
+			}
+			return true;
+		}
+		function ParseDataLength() {
+			str = document.getElementById("recData").value;
+			//console.log("regex source len = "+str.toString().length);
+			var re = /binary_length:\s?(\d*)/;
+			if ( re.test(str) ) {var res = re.exec(str); bin_len = parseInt(res[1]); rec_buff = new Uint8Array(bin_len);console.log("bin_len: "+bin_len);}
+			else	{ rec_buff = 0; console.log("no regex pattern found!");}
+			document.getElementById("binData").href = null;	// clear link
+		}
+		function SetTimeOut() {
+			if ( tim )	clearTimeout(tim);
+			tim = setTimeout(TimeOut,1000);
+		}
+		function TimeOut() {
+			if ( rec_index>0 ) {
+				//rec_buff = new Uint8Array(1520);
+				var blob = new Blob([rec_buff], {type: 'application/octet-binary'}); // pass a useful mime type here
+				var url = URL.createObjectURL(blob);
+				document.getElementById("binData").href = url;
+				rec_index = 0;	// reset data counter
+			}
+			if ( bin_rec ) console.log("switched to string reception");
+			bin_rec = false;
+		}
+		function TimeOut2() {
+			if ( ParseRxData()==true )	// parse received data from rec_buff
+				/*if ( ser && ser.is_open() )*/	{ ser.send(0x06);	console.log("reply ACK");}// send ACK
+			else 
+				/*if ( ser && ser.is_open() )*/	{ ser.send(0x15);	console.log("reply ERR");}// send ERR
+			rec_index = 0;	// reset data counter
+		}
+		function RecBin(b) {
+			if ( rec_index==0 ) { crc = 0; }
+			if ( rec_buff ) {
+				rec_buff[rec_index++] = b;	crc += b;	// just add data to buffer, and update crc
+				val = Math.floor(rec_index*100/rec_buff.length);
+				prg.value = val;	// update progress bar
+				document.getElementById("prbTxt").text = val+"%";	// update progress bar
 			}
 		}
+		function recv(bytes, size) {
+			if ( bin_rec ) {	// data packet handling
+				for (i=0; i<size; i++) { RecBin(bytes[i]); }
+				SetTimeOut();
+			} else {	// string recording
+				dat = document.getElementById("recData");
+				var d = "";
+				for (i=0;i<size;i++) {
+					b = bytes[i];
+					if ( bin_rec ) { RecBin(b); continue;}
+					c = String.fromCharCode(b);
+					if (c=='\r') { continue;}	// skip '\r' character
+					else if (c=='>') { rec_index--; if (rec_index==-3) { rec_index = 0; bin_rec = true; }}
+					else { rec_index = 0; }
+					d += c;	// display data
+					if ( bin_rec ) { dat.value += d+'\n'; d = 0; ParseDataLength(); console.log("switched to binary reception");}
+				}	// display data
+				if ( d ) {dat.value += d;}
+				if ( bin_rec ) SetTimeOut();
+				else rec_index = 0;
+			}
+		}
+		function GetSerial() {
+			ser = plugin.Serial;	// Get a Serial object
+			if ( ser ) { console.log("Got and opened serial object successful..."); }
+			else { alert("ERROR: Could not get serial object!"); return; }
+			return ser;
+		}
 		function OpenPort() {
-			if ( ser.is_open() )	ser.close();
+			if ( !ser )	GetSerial();
+			//if ( ser.is_open() )	ser.close();
 			sPort = document.getElementById("portList").value;
+			if ( sPort=='' )	sPort = "COM"+document.getElementById("forcedPort").value;
 			bRate = document.getElementById("bitRate").value;
 			dBits = document.getElementById("dataBits").value;
-			par = document.getElementById("parity").value;
-			sBits = document.getElementById("stopBits").value;
-			msg = sPort+", Baud: "+bRate+", data bits: "+dBits
-				+", parity: "+document.getElementById("parity").options[document.getElementById("parity").selectedIndex].text
-				+", stop bits: "+document.getElementById("stopBits").options[document.getElementById("stopBits").selectedIndex].text;
+			par = document.getElementById("parity");
+			sBits = document.getElementById("stopBits");
+			msg = sPort+", baud: "+bRate+", data bits: "+dBits+", parity: "+par.options[par.selectedIndex].text+", stop bits: "+sBits.options[sBits.selectedIndex].text;
 			console.log("Opening "+msg);
-/*			ser.open(sPort);// Open a port
-			ser.set_option(bRate,par,dBits,0,sBits);// Set port options 
+			// open and configure here the serial port
+			console.log("ser.open = "+ser.open(sPort));
+			ser.set_option(bRate,par.value,dBits,0,sBits.value);
 			ser.recv_callback(recv); // Callback function for recieve data
-*/
-			document.getElementById("sData").placeholder = "waiting for data from "+msg;
+			document.getElementById("recData").value = "";
+			document.getElementById("recData").placeholder = "waiting for data from "+msg;
 		}
 		function ListPorts() {
-			ser = plugin().Serial;// Get a Serial object
+			if ( ser )	ser.close();
+			// remove all previous options
+			elem = document.getElementById("portList"); while (elem.length>0)	elem.remove(0);
+			//console.time("plugin.serial");
+			GetSerial();
+			//console.timeEnd("plugin.serial");
+			//console.time("getports");
 			ports = ser.getports();
-			console.log( "Available ports: " + ports);
-			elem = document.getElementById("portList");
+			//console.timeEnd("getports");
+			//console.log( "Available ports: " + ports);
 			for ( i=0; i<ports.length; i++) {	// add serial port options
 				var opt = document.createElement("option");
 				opt.text = ports[i];
 				elem.add(opt);
 			}
-			document.getElementById("bitRate").value = "115200";	// set default option
 		}
-/*		function pluginLoaded() {
-			ser = plugin().Serial;// Get a Serial object
-			ser.open("COM1");// Open a port
-			ser.set_option(115200,0,8,0,0);// Set port options 
-			ser.recv_callback(recv); // Callback function for recieve data
-		}*/
+		function NodeSerialList() {
+			var serialPort = require("serialport");
+			serialPort.list(function (err, ports) {
+			  ports.forEach(function(port) {
+				 console.log(port.comName);
+				 console.log(port.pnpId);
+				 console.log(port.manufacturer);
+			  });
+			});
+		}
 		function pluginValid() {
-			if(plugin().valid) {
-				console.log(plugin().echo("This plugin seems to be working!"));
-			} else {
-				alert("Plugin is not working :(");
+			if( plugin.valid )	console.log( plugin.echo("This plug-in seems to be working!") );
+			else						alert("Plug-in is not working :(");
+		}
+		function Str2Byte(str) {
+			len = str.length;
+			u8v = new Uint8Array(len);
+			for (i=0; i<len;i++)
+				u8v[i] = str.charCodeAt(i);
+			return u8v;
+		}
+		function SerialTx(str) {	// send data
+			document.getElementById("sendData").placeholder = str;
+			if ( !ser ) { alert("No serial object detected!"); return; }
+			if ( !ser.is_open() ) {	alert("Serial port is not open!"); return; }
+			//if ( !ser.is_open() ) OpenPort();
+			u8 = Str2Byte(str);	// convert string to byte array
+			for (i=0; i<str.length;i++) {
+				//dat = str.charCodeAt(i);
+				dat = u8[i];
+				ser.send(dat);	// send here the data
 			}
 		}
+		function SendData() {
+			elem = document.getElementById("sendData");
+			str = elem.value;
+			if ( str=='' ) { elem.placeholder = "Nothing to send."; return; }
+			if ( document.getElementById("addNL").checked ) str += '\n';
+			SerialTx(str);
+		}
+		function SendParams() {
+			rt = document.getElementById("rec_time");
+			sf = document.getElementById("sampling_freq");
+			sps = document.getElementById("samples_per_seq");
+			msg = "set "+rt.id+"="+rt.value+";"+sf.id+"="+sf.value+";"+sps.id+"="+sps.value+"\n";
+			SerialTx(msg);
+		}
+		function SendGo() {
+			msg = "go\n";
+			SerialTx(msg);	// send recording start command
+		}
+		function SendGet() {
+			msg = "get\n";
+			SerialTx(msg);	// send recording start command
+		}
+		function ClearRxData() {
+			document.getElementById("recData").value = "";	// clear text of recorded data
+			document.getElementById("binData").text = "";	// clear link
+		}
+		function SerialInit() {
+			document.getElementById("samples_per_seq").value = "2";	// set parameters to their default value
+			document.getElementById("bitRate").value = "1152000";	// set default option
+		}
 		pluginValid();
-		ListPorts();
+		SerialInit();
+		//NodeSerialList();
+		//ListPorts();
 	</script>
 </body>
 </html>
