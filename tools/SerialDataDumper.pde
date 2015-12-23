@@ -207,6 +207,7 @@ void ListRecordingOptions()
   String[] opt = {"Select option:","--------------------------------------",
                     "[0] : setup recording parameters","[1] : start recording","[2] : read recorded data"};
   DisplayAddLines(opt,2,1);
+  DisplayClearLines();
   PromptReset();
   rec_ok = 0;
 //  ShowScreen();
@@ -246,7 +247,7 @@ void PromptUpdate()
         case REC_TIME:
           rec_time = res;
           String[] scr1 = {"- recording time: "+rec_time+" [ms]","","Enter sampling frequency [kHz]:"};
-          DisplayAddLines(scr1,-1,-2);
+          DisplayAddLines(scr1,-1,-3);
           PromptReset();
           DisplayAddLine(prompt,-1,0);
           prTarget = RecTarget.SAMPLING_FREQ;
@@ -284,24 +285,24 @@ void SetupRecording()
       switch (whichKey) {
         case '0':  // recording parameter setup
           String[] scr = {"[0] - setup recording now using following (default) parameters:",
-                          "        - recording time = 1000 ms",
-                          "        - sampling frequency = 26 kHz","        - channels per sequence = 4",
+                          "          - recording time = 1000 ms",
+                          "          - sampling frequency = 26 kHz","          - channels per sequence = 4",
                           "[1] - change parameters"};
           DisplayAddLines(scr,-1,-3);
+          rec_ok ++;  // goto next parameter selection
           break;
         case '1':  // start recordings
           break;
         case '2':  // dump recorded data
           break;
       }
-      rec_ok ++;  // goto next parameter selection
       break;
     case 1:  // display prompter rectangle
       switch (whichKey) {
         case '0':  // send the recording parameters to target
           break;
         case '1':  // show options menu
-          String[] scr = {"Setup recording parameters","----------------------------------","Enter recording time [ms]:"};
+          String[] scr = {"Setup recording parameters","----------------------------------","","Enter recording time [ms]:"};
           DisplayAddLines(scr,2,-5);
           prTarget = RecTarget.REC_TIME;
           DisplayAddLine(prompt,-1,0);
@@ -332,7 +333,7 @@ void ShowScreen()
   for (byte i=0; i<disp.length; i++) {
     if ( (disp[i]).length()>0)  text(disp[i], 10, 40+20*i);
   }
-  println("ShowScreen: disp_line = "+disp_line);
+  //println("ShowScreen: disp_line = "+disp_line);
 }
 /********************************************************************/
 void draw()
@@ -340,7 +341,8 @@ void draw()
   if ( myKey>0 ) { // proces here the new pressed key
     whichKey = myKey;
     myKey = 0;
-    if (whichKey<' ') println("*** pressed key: "+(whichKey<' '?whichKey:(char)whichKey));  // debug
+    if (whichKey<' ') println("*** pressed key: "+whichKey);  // debug
+    else println("*** pressed key: "+(char)whichKey);  // debug
     if ( rec_ok>=0 )  SetupRecording();
     if ( serial_ok>=0 )  SetupSerial();
     ShowScreen();  // display text lines
