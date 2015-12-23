@@ -23,17 +23,17 @@ int rec_ok = -1;
 byte[] inBuffer = new byte[512];
 long index = 0;
 int cnt = 0;
-long tim;
+long tim0 = 0, tim;
 long TIMEOUT = 100;  // millis
-int rec_time = 1000, sampling_freq = 26, channels_per_seq = 4;
+int rec_time = 1000, sampling_freq = 26, samples_per_seq = 4;
 boolean bin_rec;
 long bin_len;
 byte[] data;
 byte screen = 0;
-String[] disp = {"","","","","","","","","","","","","","","",""};
+String[] disp = {"","","","","","","","","","","","","","","","","","","","","","","","","",""};
 /*********************************************************************/
 void setup() {
-  size(600, 400);
+  size(600, 600);
   background(0);
   // create a font with the third font available to the system:
   //PFont myFont = createFont(PFont.list()[8], 14);
@@ -57,7 +57,64 @@ void ListSerial()
     for ( byte i=0; i<len; i++)  DisplayAddLine("["+i+"]"+" : "+Serial.list()[i],-1,0);
     serial_ok = 0;
   }
-  ShowScreen();
+}
+/********************************************************************/
+void CheckSerial()
+{
+  if ( serial_ok<3 ) return;  // do it only if serial setup was successfull.
+
+  int recs = myPort.available();
+  if ( recs>0 ) {
+    int inBytes = 0;
+    if ( bin_rec ) {  // binary reception
+      inBytes = myPort.readBytes(inBuffer);
+      if (inBytes<0)  println("buffer overflow!");
+      if (index==0) tim0 = millis();
+      ParseBinaryData(inBytes);
+      tim = millis();
+    } else {  // string reception
+      String inStr = myPort.readString();
+      ParseStringData(inStr);
+    }
+  }
+  // check here timeout-ed end of binary data reception
+  if (bin_rec && millis()-tim>TIMEOUT ) {
+    bin_rec = false;
+    tim = (tim - tim0);///1000;
+    // stop here the binary recording
+    if ( data!=null ) saveBytes("RawWrite.txt", data);
+    DisplayAddLine("finished receiving binary file 'RawWrite.txt' of size "+index+" in "+tim+ " millis.",-1,0); 
+  }
+}
+/********************************************************************/
+void ParseBinaryData(int len)
+{
+  if ( data==null || index==0) {
+    data = new byte[len];
+    arrayCopy(inBuffer, data);
+  } else
+    data = concat(data, inBuffer);  // add new bytes to the data array
+  //index += len;  // update data index
+  index = data.length;
+  DisplayAddLine("index = "+index,-1,-1);
+}
+/********************************************************************/
+void ParseStringData(String inStr)
+{
+  String[] q = splitTokens(inStr, "\r\n");
+  for (byte i=0; i<q.length;i++)  DisplayAddLine(q[i], -1,0);  // display receieved serial data
+  if ( inStr.indexOf(">>>")>0 ) {
+    bin_rec = true;
+    DisplayAddLine("receiving binary data...", -1,0);
+    // parse the binary length
+    String[] m = match(inStr, "binary_length:\\s*(\\d*)");
+    if ( m!=null ) {
+      bin_len = parseInt(m[1]);
+      DisplayAddLine("bin_len = "+bin_len,-1,0);
+      tim = millis();  // start time-out
+    }
+    index = 0;
+  }
 }
 /********************************************************************/
 void SetupSerial()
@@ -113,45 +170,27 @@ void SetupSerial()
   }
 }
 /********************************************************************/
-void ParseBinaryData(int len)
-{
-  if ( data==null ) {
-    data = new byte[len];
-    arrayCopy(inBuffer, data);
-    index = 0;
-  } else data = concat(data, inBuffer);
-    // add new bytes to the data array
-    index += len;
-    DisplayAddLine("index = "+index,-1,-1);
+void SendRecordingConfig() {
+  myPort.write("set rec_time="+rec_time+";sampling_freq="+sampling_freq+";samples_per_seq="+samples_per_seq+"\n");
 }
 /********************************************************************/
-void ParseInput(String inStr)
-{
-  String[] q = splitTokens(inStr, "\r\n");
-  for (byte i=0; i<q.length;i++)  DisplayAddLine(q[i], -1,0);  // display receieved serial data
-  if ( inStr.indexOf(">>>")>0 ) {
-    bin_rec = true;
-    DisplayAddLine("switched to binary reception", -1,0);
-    // parse the binary length
-    String[] m = match(inStr, "binary_length:\\s*(\\d*)");
-    if ( m!=null ) {
-      bin_len = parseInt(m[1]);
-      DisplayAddLine("bin_len = "+bin_len,-1,0);
-      tim = millis();  // start time-out
-    }
-    index = 0;
-  }
+void SendRecordingStart() {
+  myPort.write("go\n");
 }
 /********************************************************************/
+void SendRecordingGetData() {
+  myPort.write("get\n");
+}/********************************************************************/
 int disp_line = 0;
 /********************************************************************/
 void DisplayAddLine(String str, int line, int offset)
 {
+  //println("display in line "+disp_line+": "+str);  // debug
   int dLen = disp.length;
   int scroll = (disp_line+1+offset)-dLen;
   if ( scroll>0) {disp_line = dLen-1; println("scroll is: "+scroll);}
   while ( line==-1 && scroll>0 ) {  // have to scroll?
-    for (int i=0; i<dLen-1; i++) disp[i] = disp[i+1];  // scroll all lines one up
+    for (int i=8; i<dLen-1; i++) disp[i] = disp[i+1];  // scroll all lines one up
     scroll--;
   }
   if ( line==-1 ) {  // add to last available line
@@ -161,7 +200,7 @@ void DisplayAddLine(String str, int line, int offset)
     disp[line] = str;
     disp_line = line+1;
   }
-  //println("disp_line = "+disp_line);  // debug
+  ShowScreen();  // refresh display
 }
 /********************************************************************/
 void DisplayAddLines(String[] scr, int line, int offset)
@@ -173,48 +212,21 @@ void DisplayAddLines(String[] scr, int line, int offset)
 void DisplayClearLines()
 {
   for ( int i=disp_line; i<disp.length; i++) disp[i]="";
-}
-/********************************************************************/
-void CheckSerial()
-{
-  if ( serial_ok<6 ) return;  // do it only if serial setup was successfull.
-
-  int recs = myPort.available();
-  if ( recs>0 ) {
-    int inBytes = 0;
-    if ( bin_rec ) {  // binary reception
-      inBytes = myPort.readBytes(inBuffer);
-      if (inBytes<0)  println("buffer overflow!");
-      ParseBinaryData(inBytes);
-      tim = millis();
-    } else {  // string reception
-      DisplayAddLine("- received "+recs+" bytes",-1,0);
-      String inStr = myPort.readString();
-      ParseInput(inStr);
-    }
-  }
-  // check here timeout-ed end of binary data reception
-  if (bin_rec && millis()-tim>TIMEOUT ) {
-    bin_rec = false;
-    // stop here the binary recording
-    if ( data!=null ) saveBytes("RawWrite.txt", data);
-    DisplayAddLine("binary recording ended, size of 'RawWrite.txt' is "+index,-1,0);
-  }
+  PromptReset();
 }
 /********************************************************************/
 void ListRecordingOptions()
 {
   String[] opt = {"Select option:","--------------------------------------",
-                    "[0] : setup recording parameters","[1] : start recording","[2] : read recorded data"};
+    "[0] : setup recording parameters","[1] : start recording","[2] : read recorded data"};
   DisplayAddLines(opt,2,1);
   DisplayClearLines();
-  PromptReset();
   rec_ok = 0;
 //  ShowScreen();
 }
 /********************************************************************/
 String prompt = "> _"; int prPos = 2;
-enum RecTarget { REC_TIME, SAMPLING_FREQ, CHANNELS_PER_SEQ};
+enum RecTarget { REC_TIME, SAMPLING_FREQ, SAMPLES_PER_SEQ};
 RecTarget prTarget;
 boolean showPrompt = false;
 /********************************************************************/
@@ -223,7 +235,7 @@ void ShowPrompt()
   if ( !showPrompt ) return;
   stroke(0xff);  noFill();
   int y = 20*(disp_line)+5;
-  println("drawing rectangle... disp_line: "+disp_line+", y: "+y);
+  //println("drawing rectangle... disp_line: "+disp_line+", y: "+y);  // debug
   rect(10, y, 580, 20);
 }
 /********************************************************************/
@@ -259,12 +271,14 @@ void PromptUpdate()
           DisplayAddLines(scr2,-1,-3);
           PromptReset();
           DisplayAddLine(prompt,-1,0);
-          prTarget = RecTarget.CHANNELS_PER_SEQ;
+          prTarget = RecTarget.SAMPLES_PER_SEQ;
           rec_ok --;
          break;
-        case CHANNELS_PER_SEQ:  channels_per_seq = res;
-          String[] scr3 = {"- channels per sequnece: "+channels_per_seq,"","Use these parameters to setup recording now? [y / n ]"};
+        case SAMPLES_PER_SEQ:
+          samples_per_seq = res;
+          String[] scr3 = {"- samples per sequence: "+samples_per_seq,"","Press '0' to return to previous menu."};
           DisplayAddLines(scr3,-1,-3);
+          rec_ok = -1; //whichKey = '0';  // force menu
           showPrompt = false;
           break;
       }
@@ -273,33 +287,40 @@ void PromptUpdate()
   }
   if (showPrompt) DisplayAddLine(prompt,-1,-1);
   else DisplayClearLines();
-  println("PromptUpdate - prompt: "+prompt);  // debug
+  //println("PromptUpdate - prompt: "+prompt);  // debug
 }
 /********************************************************************/
 void SetupRecording()
 {
-  //println("SetupRecording - rec_ok: "+rec_ok+", key: "+(char)whichKey);
+  println("SetupRecording - rec_ok: "+rec_ok+", key: "+(char)whichKey);
   switch (rec_ok) {
     case 0:  // show recording parameter setop option
-      if (whichKey<='0' && whichKey>='2') return;
       switch (whichKey) {
         case '0':  // recording parameter setup
-          String[] scr = {"[0] - setup recording now using following (default) parameters:",
-                          "          - recording time = 1000 ms",
-                          "          - sampling frequency = 26 kHz","          - channels per sequence = 4",
-                          "[1] - change parameters"};
-          DisplayAddLines(scr,-1,-3);
+          String[] scr = {"[0] - setup recording now using following parameters:",
+                          "          - recording time = "+rec_time+" ms",
+                          "          - sampling frequency = "+sampling_freq+" kHz",
+                          "          - samples per sequence = "+samples_per_seq,
+                          "[1] - change parameters","[2] : return"};
+          DisplayAddLines(scr,4,0);
           rec_ok ++;  // goto next parameter selection
           break;
         case '1':  // start recordings
+          DisplayAddLine("++++++++++++++++++++++++++++++++++++++",7,0);
+          DisplayClearLines();
+          SendRecordingStart();
           break;
         case '2':  // dump recorded data
+          SendRecordingGetData();
+          DisplayAddLine("++++++++++++++++++++++++++++++++++++++",7,0);
+          DisplayClearLines();
           break;
       }
       break;
-    case 1:  // display prompter rectangle
+    case 1:  // communicate with the target
       switch (whichKey) {
         case '0':  // send the recording parameters to target
+          SendRecordingConfig();
           break;
         case '1':  // show options menu
           String[] scr = {"Setup recording parameters","----------------------------------","","Enter recording time [ms]:"};
@@ -310,19 +331,12 @@ void SetupRecording()
           showPrompt = true;
           rec_ok ++;  // goto next parameter selection
           break;
-      } break;
-    case 2:  // display prompter rectangle
-      PromptUpdate();
-      break;
-    case 3:  // display prompter rectangle
-      switch (whichKey) {
-        case 'y':  // send the recording parameters to target
-          break;
-        case 'n':  // show options menu
+        case '2':  // return
           ListRecordingOptions();
           break;
       } break;
-    case 14:
+    case 2:  // prompt update
+      PromptUpdate();
       break;
   }
 }
@@ -342,7 +356,7 @@ void draw()
     whichKey = myKey;
     myKey = 0;
     if (whichKey<' ') println("*** pressed key: "+whichKey);  // debug
-    else println("*** pressed key: "+(char)whichKey);  // debug
+    else println("*** pressed key: '"+(char)whichKey+"'");  // debug
     if ( rec_ok>=0 )  SetupRecording();
     if ( serial_ok>=0 )  SetupSerial();
     ShowScreen();  // display text lines
