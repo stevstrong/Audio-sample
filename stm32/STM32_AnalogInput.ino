@@ -25,6 +25,8 @@ uint32_t sampling_frequency = 26000;	// in Hz
 // regular channel sequence length
 uint8_t samples_per_sequence = 2;
 
+#define USE_DIFF_CHANNELS	1
+
 #define SAMPLES_PER_SEQUENCE	4	// must be power of 2 !!!
 // Set the ADC input channel sequences (left will be first)
 // channel 17 = Vrefint, only available on ADC1, can be used for tests
@@ -34,8 +36,7 @@ uint8_t ADC2_Sequence[SAMPLES_PER_SEQUENCE] = {1,3,5,7};
 /*****************************************************************************/
 /*****************************************************************************/
 // SD card chip select pin
-//const uint8_t chipSelect = 31;
-#define chipSelect PB12
+#define CHIP_SELECT PB12
 
 // use for debug, comment out when not needed
 #define DEBUG_PIN		PA8
@@ -58,43 +59,39 @@ uint8_t ADC2_Sequence[SAMPLES_PER_SEQUENCE] = {1,3,5,7};
 #define SAMPLE_SIZE				4	// dual 16 bits, combined value of ADC2 (high word) and ADC1 (low word)
 #define SAMPLES_PER_BLOCK		(BLOCK_SIZE/SAMPLE_SIZE)
 #define SAMPLES_PER_BUFFER		(ADC_BUFFER_SIZE/SAMPLE_SIZE)
-uint32_t sequences_per_block =	(SAMPLES_PER_BLOCK/samples_per_sequence);
-//#define SEQUENCES_PER_BUFFER	(SAMPLES_PER_BUFFER/used_SAMPLES_PER_SEQUENCE)
 
-// calculate some relevant values
-uint32_t needed_sequences =	((sampling_frequency*recording_time)/1000);
-uint32_t needed_blocks =		(needed_sequences/sequences_per_block);
-// the SW can only record even number of blocks.
-#if (NEEDED_BLOCKS%2)>0
- #define TOTAL_BLOCKS 			(NEEDED_BLOCKS+1)
-#else
- #define TOTAL_BLOCKS 			(NEEDED_BLOCKS)
-#endif
-uint32_t total_blocks = 		(needed_blocks);
-uint32_t total_sequences =		(total_blocks*sequences_per_block);
-uint32_t total_samples =		(total_sequences*samples_per_sequence);
+// some needed variables
+uint32_t sequences_per_block;
+uint32_t needed_sequences;
+uint32_t needed_blocks;
+uint32_t total_blocks;
+uint32_t total_sequences;
+uint32_t total_samples;
 
 // timing related constants
 #define TIMER_PRESCALER			4	// to divide the system clock, appropriate for frequencies <1kHz
 #define TIMER_FREQUENCY			(72000000/TIMER_PRESCALER)
-//#define TIMER_RELOAD_VALUE		((TIMER_FREQUENCY/SAMPLING_FREQUENCY)-1)
 uint32_t timer_reload_value = (TIMER_FREQUENCY/sampling_frequency)-1;
 
 /********************************************************************/
 /********************************************************************/
 void SetupParameters() {
 	// calculate some relevant values
-	sequences_per_block =	(SAMPLES_PER_BLOCK/samples_per_sequence);
-	needed_sequences =	((sampling_frequency*recording_time)/1000);
-	needed_blocks =		(needed_sequences/sequences_per_block);
+	sequences_per_block = (SAMPLES_PER_BLOCK/samples_per_sequence);
+	needed_sequences = ((sampling_frequency*recording_time)/1000);
+#ifdef USE_DIFF_CHANNELS
+	needed_blocks = (needed_sequences/sequences_per_block)/2;
+#else
+	needed_blocks = (needed_sequences/sequences_per_block);
+#endif
 	// the SW can only count and record a complete number of blocks.
 	// so we need to round up the number of sequences to match a complete block
 	if ( (needed_blocks&1) )
-		total_blocks =			(needed_blocks+1);
+		total_blocks =	(needed_blocks+1);
 	else
-		total_blocks = 		(needed_blocks);
-	total_sequences =		(total_blocks*sequences_per_block);
-	total_samples =		(total_sequences*samples_per_sequence);
+		total_blocks = (needed_blocks);
+	total_sequences =	(total_blocks*sequences_per_block);
+	total_samples = (total_sequences*samples_per_sequence);
 	// timing related values
 	timer_reload_value = (TIMER_FREQUENCY/sampling_frequency)-1;
 }
@@ -295,7 +292,7 @@ void SD_Init(void)
 {
 	Serial.print(F("initializing the SD card..."));
 	// initialize the SD card
-	if ( !sd.begin(chipSelect, SPI_CLOCK_DIV2) ) {
+	if ( !sd.begin(CHIP_SELECT, SPI_CLOCK_DIV2) ) {
 		sd.initErrorHalt();
 	}
 	// delete possible existing file
@@ -453,7 +450,10 @@ void CheckSerial()
 	// read any existing Serial data
 	//while (Serial1.read() >= 0) {}
 	delay(100);
-	Serial1.println(F("\ntype any character to start\n"));
+	Serial1.println(F("\n***** Accepted commands *****"));
+	Serial1.println(F("\tSet up recording parameters: set rec_time=1000;sampling_freq=22;samples_per_seq=2\\n"));
+	Serial1.println(F("\tStart recording: go\\n"));
+	Serial1.println(F("\tDump recorded data: get\\n\n*****"));
 	rec_buff[0] = 0;
 	while ( !start ) {
 		if ( SerialReadBytes() )	// parse received serial data
@@ -465,13 +465,28 @@ void CheckSerial()
 void SD_buffer_to_card(byte buf)
 {
 	buff_index = buf;
-	//	copy data from buffer to cache
+	//	copy data from ADC buffer to SD cache
 	uint32_t * sp = adc_buffer+(buf*SAMPLES_PER_BLOCK);
 	uint32_t * dp = (uint32_t*)pCache;
+#ifdef USE_DIFF_CHANNELS
+	dp += (buf*SAMPLES_PER_BLOCK/2);	// adjust destination pointer for second half cache
+	uint32_t tmp = 0;
+	//	copy data from source buffer to cache
+	for ( uint16_t i=0; i<SAMPLES_PER_BLOCK; i++ ) {
+		uint32_t val = *sp++;
+		val = (val&0x0000FFFF) - (val/0x10000);	// ADC0 value (low word) - ADC1 value (high word)
+		if ( (i&0x0001) )
+			*dp++ = (uint32_t)(val<<16) + tmp;	// store value combined with that of previous reading
+		else
+			tmp = val&0x0000FFFF;	// save the lower word for the next writing
+	}
+	if ( buf==0 ) return;	// store only even blocks
+#else
 	for ( int i=0; i<SAMPLES_PER_BLOCK; i++ )	{
 		*dp++ = *sp++;	// optimized copy using destination and source pointers
 	}
-//	uint32_t tw = micros();
+#endif
+//	uint32_t tw = micros();	// measure time needed for writing to card
 	// write a 512 byte block cache to card
 	if (!sd.card()->writeData((const uint8_t*)pCache)) {
 		error("writeData failed");
@@ -555,29 +570,6 @@ void loop()
 */
 	// OPTIONAL: print last samples from ADC buffer to check validity
 	//SendData();
-
-return;
-
-//debug
-/*
-	Serial.println(F("\nSave to card? (type 'y' for yes, any other for no\n"));
-	int c;
-	while ( (c= Serial.read())<=0 ) {}
-	if ( c=='y' ) {
-		//debug
-		SD_Init();
-				gpio_toggle_bit(GPIOA,8);	//debug - measure card transfer time
-		SD_buffer_to_card(0);
-				gpio_toggle_bit(GPIOA,8);	//debug - measure card transfer time
-		SD_buffer_to_card(1);
-				gpio_toggle_bit(GPIOA,8);	//debug - measure card transfer time
-		// end multiple block write mode
-		if (!sd.card()->writeStop()) {
-			error("writeStop failed");
-		}
-		// close file for next pass of loop
-		file.close();
-	}*/
 }
 /***************************************************************************/
 /*****************************************************************************/
