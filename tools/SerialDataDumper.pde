@@ -30,17 +30,17 @@ boolean bin_rec;
 long bin_len;
 byte[] data;
 byte screen = 0;
-String[] disp = {"","","","","","","","","","","","","","","","","","","","","","","","","",""};
+String[] disp = new String[30];
 /*********************************************************************/
 void setup() {
-  size(600, 600);
+  size(800, 700);
   background(0);
   // create a font with the third font available to the system:
   //PFont myFont = createFont(PFont.list()[8], 14);
   PFont myFont = createFont("Courrier new", 16);
   textFont(myFont);
-  // init serial port
-  ListSerial();
+  for (int i=0;i<disp.length; i++)  disp[i] = "";  // initialize string array
+  ListSerial();  // init serial port
 }
 /********************************************************************/
 void ListSerial()
@@ -218,7 +218,8 @@ void DisplayClearLines()
 void ListRecordingOptions()
 {
   String[] opt = {"Select option:","--------------------------------------",
-    "[0] : setup recording parameters","[1] : start recording","[2] : read recorded data"};
+    "[0] : setup recording parameters","[1] : start recording","[2] : read recorded data",
+    "--------------------------------------"};
   DisplayAddLines(opt,2,1);
   DisplayClearLines();
   rec_ok = 0;
@@ -301,29 +302,27 @@ void SetupRecording()
                           "          - recording time = "+rec_time+" ms",
                           "          - sampling frequency = "+sampling_freq+" kHz",
                           "          - samples per sequence = "+samples_per_seq,
-                          "[1] - change parameters","[2] : return"};
+                          "[1] - change parameters","[2] : return","--------------------------------------"};
           DisplayAddLines(scr,4,0);
+          DisplayClearLines();
           rec_ok ++;  // goto next parameter selection
           break;
         case '1':  // start recordings
-          DisplayAddLine("++++++++++++++++++++++++++++++++++++++",7,0);
-          DisplayClearLines();
           SendRecordingStart();
           break;
         case '2':  // dump recorded data
           SendRecordingGetData();
-          DisplayAddLine("++++++++++++++++++++++++++++++++++++++",7,0);
-          DisplayClearLines();
           break;
       }
       break;
     case 1:  // communicate with the target
       switch (whichKey) {
         case '0':  // send the recording parameters to target
+          ListRecordingOptions();
           SendRecordingConfig();
           break;
         case '1':  // show options menu
-          String[] scr = {"Setup recording parameters","----------------------------------","","Enter recording time [ms]:"};
+          String[] scr = {"Setup recording parameters","--------------------------------------","","Enter recording time [ms]:"};
           DisplayAddLines(scr,2,-5);
           prTarget = RecTarget.REC_TIME;
           DisplayAddLine(prompt,-1,0);
