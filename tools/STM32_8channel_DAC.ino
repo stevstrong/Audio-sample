@@ -30,7 +30,6 @@ SPIClass SPI_2(2); //Create an instance of the SPI Class called SPI_2 that uses 
 #define DBG_PIN_SET		PORT_PIN_SET(GPIOB, 4)
 #define DBG_PIN_CLEAR	PORT_PIN_CLEAR( GPIOB, 4)
 /*****************************************************************************/
-//uint16_t sig[1024];
 int16 i;
 // complete sine table comprising 256 samples
 uint16_t sig[] __attribute__ ((packed, aligned(2))) = {
@@ -63,32 +62,19 @@ void setup()
 	sendSPI2(0x8004);	// CTRL0: use internal 1V reference
 	sendSPI2(0x90E0);	// CTRL1: use slow speed, channel A and /B, the rest is powered down
 	// prepare the signal table
-/*
-	i = 0;	int16_t j;
-	int16_t inc = 20;
-	for (j=0; j<0x1000; j+=inc)	{*p++ = 0xC000+j; i++;}
-	for (j=0xfff; j>=0; j-=inc)	{*p++ = 0xC000+j; i++;}
-*/
 	for (i=0; i<256; i++)	{sig[i] += 0xC000;}	// add TLV5630 address bits for channel A and /B
 }
 /*****************************************************************************/
 void loop()
 {
-/*
-	for (uint16_t val=0xC000; val<0xD000; val+=16)	sendSPI2(val);
-	for (uint16_t val=0xD000; val>0xC000; val-=16)	sendSPI2(val);
-	*/
 	for (i = 0; i<256; i++)
 		sendSPI2(sig[i]);
-
 }
 /*****************************************************************************/
 void sendSPI2(uint16_t data)
 {
 	int16_t tim = 14;	while ( (tim--)>0 ) asm("NOP");	// extra timing for an exact 1 kHz period
-//	DBG_PIN_SET;
 	NSS2_PIN_CLEAR;
-//	DBG_PIN_CLEAR;
 	spi_tx_reg(SPI2, data); // Write the data item to be transmitted into the SPI_DR register (this clears the TXE flag)
 	while (spi_is_tx_empty(SPI2) == 0); // Wait until TXE=1
 	while (spi_is_busy(SPI2) != 0); // and then wait until BSY=0
