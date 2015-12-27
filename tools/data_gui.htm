@@ -41,7 +41,7 @@
 		" onmousemove='ShowCoordinates(event)' onmouseup='mouse_up(event)' onclick='ZoomUpdate()'></canvas>");
 		document.write("<canvas id='canvas_2' width="+(canvasWidth-300)+" height="+canvas2Heigth+
 		" style='z-index: 2; position:absolute;left:40px;top:30px;border:1px solid;box-shadow: inset 0px 0px 10px 5px #D5D5D5'" +
-		" onmousemove='ShowCoordinates(event)' onmousedown='mouse_down(event)' onmouseup='mouse_up(event)'></canvas>");
+		" onmousemove='ShowCoordinates(event)' onmousedown='mouse_down(event)' onmouseup='mouse_up(event)' onwheel='mouse_wheel(event)'></canvas>");
 		// add listener
 		document.getElementById('fileinput').addEventListener('change', readSingleFile, false);
 		document.getElementById('fileinput').value = '';
@@ -191,26 +191,23 @@
 				for (var j=0; j<alen; j++) {
 					if ( document.getElementById("checkbox"+(j+1)).checked ) {
 						var data_index = dindex.start + Math.floor(last_coord.x*d_spacing);
-						elem.innerHTML = data_index;
+						elem.value = data_index; elem.innerHTML = data_index;
 						document.getElementById("myData"+(j+1)).innerHTML =  data_array[j][data_index];
 					} else {
 						document.getElementById("myData"+(j+1)).innerHTML =  "";
 					}
 				}
-				//alert("ShowMarker: before restore");
 				GUI_Restore();
-				//alert("ShowMarker: after restore");
 				// draw marker
 				ctx2.moveTo(last_coord.x,0);
 				ctx2.lineTo(last_coord.x,hei);
 				ctx2.stroke();
-				//alert("ShowMarker: after stroke");
 			}
 		}
 		/**********************************************/
 		function ShowCoordinates(e)
 		{	// get coordinates
-			x = e.clientX-60;	//	var x = e.clientX-30;
+			x = e.clientX-70;	//	var x = e.clientX-30;
 			y = e.clientY-130;
 			last_coord.x = x;	//	var x = e.clientX-30;
 			last_coord.y = y;
@@ -245,7 +242,21 @@
 			ShowCoordinates(e);
 		}
 		/**********************************************/
+		function mouse_wheel(e) {
+			// set middle point to mouse position
+			var ind = document.getElementById("d_index").value;
+			mid = Math.floor((dindex.start + dindex.end)/2);
+			delta = mid-ind;
+			//console.log("ind: "+ind+", mid: "+mid+", delta: "+delta);
+			dindex.start -= delta;
+			dindex.end -= delta;
+			if ( e.deltaY>0 ) ZoomOut();
+			else  ZoomIn();
+		}
+		/**********************************************/
 		function ZoomUpdate() {
+			if ( dindex.start<0 ) dindex.start = 0;
+			if ( dindex.end>dlen ) dindex.end = dlen;
 			GUI_Draw();
 			selection = [0,0,0,0];
 		}
@@ -256,28 +267,24 @@
 			xmax = Math.max(selection[0],selection[2]);
 			// transpose the GUI selection coordinates to array indexes and amplitude
 			var d_len = dindex.end - dindex.start;
-			dindex.end = dindex.start + Math.round(xmax*d_len/wid);
 			dindex.start = dindex.start + Math.round(xmin*d_len/wid);
+			dindex.end = dindex.start + Math.round(xmax*d_len/wid);
 			ZoomUpdate();
 		}
 		/**********************************************/
 		function ZoomIn() {
 			// transpose the GUI selection coordinates to array indexes and amplitude
-			var d_len = dindex.end - dindex.start;
-			//if ( d_len<100 ) return;  
+			var d_len = Math.min(dindex.end - dindex.start, dlen);
 			dindex.start = dindex.start + Math.round(d_len/4);
 			dindex.end = dindex.end - Math.round(d_len/4);
-			d_len = dindex.end - dindex.start;
 			ZoomUpdate();
 		}
 		/**********************************************/
 		function ZoomOut() {
 			// transpose the GUI selection coordinates to array indexes and amplitude
 			var d_len = dindex.end - dindex.start;
-			dindex.end = dindex.end + Math.round(d_len/2);
-			if ( dindex.end>dlen ) dindex.end = dlen;
 			dindex.start = dindex.start - Math.round(d_len/2);
-			if ( dindex.start<0 ) dindex.start = 0;
+			dindex.end = dindex.end + Math.round(d_len/2);
 			ZoomUpdate();
 		}
 		/**********************************************/
@@ -378,11 +385,10 @@
 					for (var i=0; i<d_len; i++)
 					{
 						var dat = data_array[j][dindex.start+i];
-						if ( dat=='' ) continue;
-						//xp = Math.ceil(i*spacingHorizontal);
 						var xp = i*spacingHorizontal;
 						var yp = 0.95*hei - (dat-gr.ymin)*verticalCoefficient;
-						ctx2.lineTo(xp, yp);
+						if (i==0) ctx2.moveTo(xp, yp);
+						else	ctx2.lineTo(xp, yp);
 					}
 					// draw last point if not last data index
 					if ( i<dlen )	ctx2.lineTo(i*spacingHorizontal, (0.95*hei - ((data_array[j][dindex.start+i])-gr.ymin)*verticalCoefficient));
