@@ -190,7 +190,7 @@
 				var d_spacing = (dindex.end - dindex.start)/wid;
 				for (var j=0; j<alen; j++) {
 					if ( document.getElementById("checkbox"+(j+1)).checked ) {
-						var data_index = dindex.start + Math.floor(last_coord.x*d_spacing);
+						var data_index = dindex.start + Math.round(last_coord.x*d_spacing);
 						elem.value = data_index; elem.innerHTML = data_index;
 						document.getElementById("myData"+(j+1)).innerHTML =  data_array[j][data_index];
 					} else {
@@ -205,8 +205,8 @@
 			}
 		}
 		/**********************************************/
-		function ShowCoordinates(e)
-		{	// get coordinates
+		function ShowCoordinates(e) {
+			// get coordinates
 			x = e.clientX-70;	//	var x = e.clientX-30;
 			y = e.clientY-130;
 			last_coord.x = x;	//	var x = e.clientX-30;
@@ -235,23 +235,27 @@
 		function mouse_down(e) {
 			m_down = true;
 			ShowCoordinates(e);
+			document.addEventListener('mousemove', ShowCoordinates, false);	
+			document.addEventListener('mouseup', mouse_up, false);
 		}
 		/**********************************************/
 		function mouse_up(e) {
 			m_up = true;
 			ShowCoordinates(e);
+			document.removeEventListener('mousemove', ShowCoordinates, false);	
+			document.removeEventListener('mouseup', mouse_up, false);
 		}
 		/**********************************************/
 		function mouse_wheel(e) {
-			// set middle point to mouse position
 			var ind = document.getElementById("d_index").value;
-			mid = Math.floor((dindex.start + dindex.end)/2);
-			delta = mid-ind;
-			//console.log("ind: "+ind+", mid: "+mid+", delta: "+delta);
-			dindex.start -= delta;
-			dindex.end -= delta;
-			if ( e.deltaY>0 ) ZoomOut();
-			else  ZoomIn();
+			if ( e.deltaY>0 ) { // zoom out
+				dindex.start -= (ind-dindex.start);
+				dindex.end += (dindex.end-ind);
+			} else {	// zoom in
+				dindex.start =  Math.round((dindex.start+ind)/2);
+				dindex.end = Math.round((dindex.end+ind)/2);
+			}
+			ZoomUpdate();
 		}
 		/**********************************************/
 		function ZoomUpdate() {
@@ -265,15 +269,15 @@
 			if ( selection[0]==0 && selection[2]==0 )	return;
 			xmin = Math.min(selection[0],selection[2]);
 			xmax = Math.max(selection[0],selection[2]);
-			// transpose the GUI selection coordinates to array indexes and amplitude
-			var d_len = dindex.end - dindex.start;
-			dindex.start = dindex.start + Math.round(xmin*d_len/wid);
-			dindex.end = dindex.start + Math.round(xmax*d_len/wid);
+			// transpose the GUI selection coordinates to array indexes
+			var d_spacing = (dindex.end - dindex.start)/wid;
+			dindex.end = dindex.start + Math.round(xmax*d_spacing);
+			dindex.start = dindex.start + Math.round(xmin*d_spacing);
 			ZoomUpdate();
 		}
 		/**********************************************/
 		function ZoomIn() {
-			// transpose the GUI selection coordinates to array indexes and amplitude
+			// transpose the GUI selection coordinates to array indexes
 			var d_len = Math.min(dindex.end - dindex.start, dlen);
 			dindex.start = dindex.start + Math.round(d_len/4);
 			dindex.end = dindex.end - Math.round(d_len/4);
@@ -281,7 +285,7 @@
 		}
 		/**********************************************/
 		function ZoomOut() {
-			// transpose the GUI selection coordinates to array indexes and amplitude
+			// transpose the GUI selection coordinates to array indexes
 			var d_len = dindex.end - dindex.start;
 			dindex.start = dindex.start - Math.round(d_len/2);
 			dindex.end = dindex.end + Math.round(d_len/2);
@@ -289,7 +293,7 @@
 		}
 		/**********************************************/
 		function ZoomReset() {
-			// transpose the GUI selection coordinates to array indexes and amplitude
+			// go back to original x-scaling
 			dindex.start = 0;
 			dindex.end = dlen;
 			ZoomUpdate();
