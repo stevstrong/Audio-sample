@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"><title>Slider example</title>
+<style>
+*, *::before, *::after {
+	box-sizing: border-box;
+	font-family: "Helvetica Neue","Helvetica",Helvetica,Arial,sans-serif !important;
+}
+.range-slider {
+	border: 1px solid #DDD;
+	margin: 1.11111rem 0px;
+	position: relative;
+	display: block;
+	height: 0.88889rem;
+	width: 900px;
+	background: #FAFAFA none repeat scroll 0% 0%;
+}
+.range-slider-handle {
+	cursor: pointer;
+	display: inline-block;
+	height: 1.22222rem;
+	position: absolute;
+	top: -0.27778rem;
+	width: 1.77778rem;
+	z-index: 1;
+	background: #008CBA none repeat scroll 0% 0%;
+}
+
+</style>
+</head>
+<body>
+
+<h3>A demonstration of how to access a Slider Control</h3>
+
+<input type="number" id="myNumber" defaultValue="2" max="100" onchange="myFunction(this.value)">
+<input type="range" id="myRange" defaultValue="90" max="100" onmousemove="ChangeNumber(this.value)">
+
+<p><strong>Note:</strong> input elements with type="range" are not supported in IE 9 and earlier versions.</p>
+
+<p id="demo"></p>
+
+<script>
+function myFunction(val) {
+    var r = document.getElementById("myRange");
+    r.value = val;
+}
+function ChangeNumber(val) {
+    var n = document.getElementById("myNumber");
+    n.value = val;
+}
+</script>
+ 
+<div class="range-slider" id="mySliderDiv" slider-value="10">
+<span class="range-slider-handle" id="mySliderHandle"></span>
+</div>
+ 
+<div id='info'>info</div>
+
+<script>
+var slider_bar, slider_handle, info;
+
+function init(){
+	slider_bar = document.getElementById('mySliderDiv');
+	slider_handle = document.getElementById('mySliderHandle');
+	//slider_handle.style.transform = "translateX(259px)";
+	slider_handle.style.marginLeft = "259px";
+	info = document.getElementById('info');
+	slider_bar.addEventListener('mousedown', startSlide, false);
+	slider_bar.addEventListener('mouseup', stopSlide, false);
+	//slider_bar.addEventListener('mouseout', stopSlide, false);
+}
+function GetPosition(event){
+	//var pos = ((event.clientX - slider_bar.offsetLeft) / (slider_bar.offsetWidth+slider_handle.offsetWidth)).toFixed(2);
+	var pos = ((event.clientX - slider_bar.offsetLeft) / (slider_bar.offsetWidth));
+	if ( pos>1 ) pos = 1;
+	if ( pos<0 ) pos = 0;
+	//slider_handle.style.width = (set_perc * 100) + '%';
+	//slider_handle.style.transform = "translateX("+(set_perc*900)+"px)";
+	//slider_handle.style.marginLeft = (-Math.round(slider_handle.offsetWidth/2)+(pos*900))+"px";
+	slider_handle.style.marginLeft = (-(slider_handle.offsetWidth*pos)+(pos*900)).toFixed(1)+"px";
+	info.innerHTML = (pos*100).toFixed(1) + '%';
+	return pos;
+}
+function startSlide(event){
+	var set_perc = GetPosition(event);
+	//slider_bar.addEventListener('mousemove', moveSlide, false);	
+	document.addEventListener('mousemove', moveSlide, false);	
+	document.addEventListener('mouseup', stopSlide, false);
+}
+function moveSlide(event){
+	var set_perc = GetPosition(event);
+}
+function stopSlide(event){
+	var set_perc = GetPosition(event);
+	//info.innerHTML = 'done : ' + set_perc + '%';
+	//slider_bar.removeEventListener('mousemove', moveSlide, false);
+	document.removeEventListener('mousemove', moveSlide, false);
+	document.removeEventListener('mouseup', stopSlide, false);
+}
+init();
+</script>
+
+
+
+</body>
+</html>
