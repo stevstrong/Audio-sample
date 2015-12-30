@@ -300,6 +300,7 @@
 		}
 		/**********************************************/
 		function Data_GetRangeY() {
+			var offs = 50;
 			var ymin = 0x10000;
 			var ymax = 1;
 			var dend = dindex.end;	if ( dindex.end<dlen ) dend += 1;
@@ -308,7 +309,7 @@
 				var chckId = document.getElementById("checkbox"+(j+1));
 				if ( chckId && chckId.checked )
 				{// plot only checked plots. get min and max values
-					for (var i=dindex.start; i<dend; i++)
+					for (var i=dindex.start+offs; i<dend; i++)
 					{
 						var dat = data_array[j][i];	//*1.0;	// make float
 						if ( dat<ymin ) ymin = dat;	// get minimum value
@@ -426,9 +427,15 @@
 					nowBuffering[i] = (Math.random()*2 - 1);
 				}
 			} else { // generate audio
+				var r = Data_GetRangeY();
+				var div = (r.ymax-r.ymin)/2;
+				console.log("Audio_SamplePlayer: div: "+div);
+				var fad = Math.floor(frameCount/20);	// fading time
 				for (var i = 0; i < frameCount; i++) {
 					// audio needs to be in [-1.0; 1.0]
-					nowBuffering[i] = (data_array[ch][dindex.start+i]/32768);
+					var samp = data_array[ch][dindex.start+i]/div - 1;
+					if (i<fad) samp = samp/(fad-i);	// fade in
+					nowBuffering[i] = samp;
 				}
 			}
 			// Get an AudioBufferSourceNode. This is the AudioNode to use when we want to play an AudioBuffer
