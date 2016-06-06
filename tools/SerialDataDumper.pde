@@ -7,11 +7,12 @@
  * - menu to choose one of the recording options:
  *   - setup recording parameters (recording time, sampling frequency, channels per sequence)
  *   - start recording
- *   - dump recoreded data
+ *   - dump recorded data
  *
  */
 import processing.serial.*;
 
+int BUFF_SIZE = 2048;
 Serial myPort;      // The serial port
 String portName = "";
 int bRate = 0;
@@ -20,24 +21,25 @@ int[] keys = new int[5];  // max 5 key possibilities
 int inByte = -1;    // Incoming serial data
 int serial_ok = -1;
 int rec_ok = -1;
-byte[] inBuffer = new byte[512];
-long index = 0;
+byte[] inBuffer = new byte[BUFF_SIZE];
+int index = 0;
 int cnt = 0;
-long tim0 = 0, tim;
-long TIMEOUT = 100;  // millis
+int tim = 0;
+int TIMEOUT = 100;  // millis
 int rec_time = 1000, sampling_freq = 26, samples_per_seq = 4;
 boolean bin_rec;
-long bin_len;
-byte[] data;
+int bin_len;
+byte[] data = new byte[520];
 byte screen = 0;
 String[] disp = new String[30];
+int status = 0;
 /*********************************************************************/
 void setup() {
   size(800, 700);
   background(0);
   // create a font with the third font available to the system:
   //PFont myFont = createFont(PFont.list()[8], 14);
-  PFont myFont = createFont("Courrier new", 16);
+  PFont myFont = createFont("Courier new", 16);
   textFont(myFont);
   for (int i=0;i<disp.length; i++)  disp[i] = "";  // initialize string array
   ListSerial();  // init serial port
@@ -61,60 +63,156 @@ void ListSerial()
 /********************************************************************/
 void CheckSerial()
 {
-  if ( serial_ok<3 ) return;  // do it only if serial setup was successfull.
+	if ( serial_ok<2 ) return;  // do it only if serial setup was successful.
 
-  int recs = myPort.available();
-  if ( recs>0 ) {
-    int inBytes = 0;
-    if ( bin_rec ) {  // binary reception
-      inBytes = myPort.readBytes(inBuffer);
-      if (inBytes<0)  println("buffer overflow!");
-      if (index==0) tim0 = millis();
-      ParseBinaryData(inBytes);
-      tim = millis();
-    } else {  // string reception
-      String inStr = myPort.readString();
-      ParseStringData(inStr);
-    }
-  }
-  // check here timeout-ed end of binary data reception
-  if (bin_rec && millis()-tim>TIMEOUT ) {
-    bin_rec = false;
-    tim = (tim - tim0);///1000;
-    // stop here the binary recording
-    if ( data!=null ) saveBytes("RawWrite.txt", data);
-    DisplayAddLine("finished receiving binary file 'RawWrite.txt' of size "+index+" in "+tim+ " millis.",-1,0); 
-  }
+	if ( myPort.available()<=0 ) return;	// no data available
+
+	if ( bin_rec ) {  // binary reception
+		ParseBinaryData();
+	} else {  // string reception
+		//String inStr = myPort.readString();	ParseStringData(inStr);
+		ParseStringData(myPort.readString());
+	}
+}
+/********************************************************************
+arrayCopy(src, srcPosition, dst, dstPosition, length)
+arrayCopy(src, dst, length)
+********************************************************************/
+/********************************************************************/
+/* Binary packet format:
+start_id	[0x01]
+data_length	[len_high] [len_low]
+payload		[dd] ... [dd]
+crc			[crc_high] [crc_low]
+/********************************************************************/
+void Tick() {
+	int tim1 = millis();
+	print('.');
+	while ( (millis()-tim1)<20 );	// wait some time
 }
 /********************************************************************/
-void ParseBinaryData(int len)
+/********************************************************************/
+int GetByteFromSerial()
 {
+	int tim2 = millis();
+	while ( myPort.available()<=0 ) {
+		Tick();
+		if ( (millis()-tim2)>1000 ) {
+			println("! timeout receiving data from serial!");
+			return -1;
+		};
+	}	// wait to receive something
+	int c = myPort.read();
+	//println("serial data: 0x"+hex(c,2));	// debug
+	return c;
+}
+/********************************************************************/
+//int len, pack_len;	// payload index
+/********************************************************************/
+int GetPayload(int bytes)
+{
+	int c;
+	int pl_index = 0;
+	while ( bytes>0 ) {
+		c = GetByteFromSerial();
+		if ( c<0 ) {
+			println("! incomplete payload, received bytes: "+pl_index);
+			return 1;
+		}
+		inBuffer[pl_index++] = (byte)c;
+		bytes --;
+	}
+	//println("got payload bytes: "+pl_index);
+	//print('.');
+	return 0;
+}
+/********************************************************************/
+/********************************************************************/
+void ParseBinaryData()
+{
+	// read the available bytes
+	int a, len;
+	//while (true) {
+		// get header ID
+		if ( (a=GetByteFromSerial())<0 ) {
+			return;
+		}
+
+		if ( a==0x01 ) {	// parse header info
+			// get here payload length
+			len = GetByteFromSerial()<<8;
+			len += GetByteFromSerial();
+			//println("payload length: "+len);	// debug
+			// wait for entire payload reception
+			if ( GetPayload(len)>0 ) return;
+			myPort.write(0x06);	// send acknowledge
+	/**/
+			if ( (index+len)<=data.length ) {
+				arrayCopy(inBuffer,0,data,index,len);
+				index += len;  // update data index
+				DisplayAddLine("index = "+index,-1,-1);
+			} else {
+				println("!data buffer overflow!");
+				DisplayAddLine("!data buffer overflow!",-1,0);
+			}
+		
+		} else if ( a==0x17 ) {	// end of transmission block
+			// stop here the binary recording
+			tim = (millis() - tim);
+			//println("time diff: "+tim);
+			if ( data!=null ) saveBytes("RawWrite.txt", data);
+			println("\nfinished receiving 'RawWrite.txt' of size "+index+" in "+tim+" millis.");
+			DisplayAddLine("finished receiving 'RawWrite.txt' of size "+index+" in "+tim+" millis.",-1,0);
+			bin_rec = false;
+			bin_len = 0;
+			//break;
+		} else {
+			println("!wrong binary ID received: 0x"+hex(a,2));
+			//DisplayAddLine("!wrong binary ID!",-1,0); 
+			return;
+		}
+	//}
+/*
   if ( data==null || index==0) {
     data = new byte[len];
     arrayCopy(inBuffer, data);
   } else
     data = concat(data, inBuffer);  // add new bytes to the data array
-  //index += len;  // update data index
   index = data.length;
-  DisplayAddLine("index = "+index,-1,-1);
+*/
 }
+/********************************************************************/
+String[] q,m;
 /********************************************************************/
 void ParseStringData(String inStr)
 {
-  String[] q = splitTokens(inStr, "\r\n");
-  for (byte i=0; i<q.length;i++)  DisplayAddLine(q[i], -1,0);  // display receieved serial data
-  if ( inStr.indexOf(">>>")>0 ) {
-    bin_rec = true;
-    DisplayAddLine("receiving binary data...", -1,0);
-    // parse the binary length
-    String[] m = match(inStr, "binary_length:\\s*(\\d*)");
-    if ( m!=null ) {
-      bin_len = parseInt(m[1]);
-      DisplayAddLine("bin_len = "+bin_len,-1,0);
-      tim = millis();  // start time-out
-    }
-    index = 0;
-  }
+	q = splitTokens(inStr, "\r\n");
+	for (byte i=0; i<q.length; i++) {
+		//DisplayAddLine(i+": "+q[i], -1,0);  // display received serial data
+		println(i+": "+q[i]);
+		// check binary marker
+		if ( q[i].indexOf(">>>")>=0 ) {
+			println("binary transmission active");
+			DisplayAddLine("receiving data...", -1,0);
+			bin_rec = true;
+			index = 0;
+			// send the acknowledge byte
+			//println("Sending ACK");
+			//myPort.buffer(1);
+			myPort.write(0x06);
+			tim = millis();	// start measuring time
+
+		} else if (bin_len==0) {
+			// parse the binary length
+			m = match(q[i], "binary_length:\\s*(\\d*)");
+			if ( m!=null ) {
+				bin_len = parseInt(m[1]);
+				println("bin_len = "+bin_len);
+				DisplayAddLine("bin_len = "+bin_len,-1,0);
+				data = new byte[bin_len];
+			}
+		}
+	}
 }
 /********************************************************************/
 void SetupSerial()
@@ -126,46 +224,34 @@ void SetupSerial()
         portName = Serial.list()[whichKey-'0'];
         DisplayAddLine("- selected serial port: "+portName,0,0);
         String[] scr1 = {"","Select one configuration (bitrate, data bits, parity, stop bits):",
-                          "-------------------------------------------------------------------------------",
+                            "-----------------------------------------------------------------",
                           "[0] : 115200, 8, N, 1","[1] : 250000, 8, N, 1","[2] : 500000, 8, N, 1"};
         DisplayAddLines(scr1,-1,0);
         serial_ok ++;  // goto next parameter selection
       }
       break;
-    case 1:  // show selected Baudrate and data bits option
-        switch (whichKey) {
-          case '0':  bRate = 115200;  break;
-          case '1':  bRate = 250000;  break;
-          case '2':  bRate = 500000;  break;
-          default: break;
-        }
-        if ( bRate>0 ) {
-          String[] scr2 = {"- selected Baudrate: "+bRate,"","Open port "+portName+", "+bRate+", 8, N, 1 ? [ y / n ]"};
-          DisplayAddLines(scr2,1,0);
-          DisplayClearLines();
-          serial_ok ++;  // goto next parameter selection
-        }
-        break;
-    case 2:  // show selected data bits and parity options
-        switch (whichKey) {
-          case 'y':  case 'Y':
-            myPort = new Serial(this, portName, bRate, 'N', 8, 1);  // Maple Mini analog recorder
-            //myPort = new Serial(this, portName, 115200, 'E', 8, 2);  // EnergyCam
-            if ( myPort!=null ) {
-              DisplayAddLine("Serial port "+portName+", "+bRate+", 8, 'N', 1 opened successfully.",0,0);
-              DisplayClearLines();
-              ListRecordingOptions();
-              serial_ok ++;  // goto next parameter selection
-            } else {
-              DisplayAddLine("Opening port "+portName+", "+bRate+", 8, 'N', 1 ... failed!",-1,-1);
-              DisplayAddLine("Check serial port and try again (press 'n')",-1,0);
-            }
-            break;
-          case 'n':  case 'N':
-              ListSerial(); break;
-          default: break;
-        }
-        break;
+    case 1:  // show selected Baud rate and data bits option
+      switch (whichKey) {
+        case '0':  bRate = 115200;  break;
+        case '1':  bRate = 250000;  break;
+        case '2':  bRate = 500000;  break;
+        default:   bRate = 0; break;
+      }
+      if ( bRate>0 ) {
+          myPort = new Serial(this, portName, bRate, 'N', 8, 1);  // Maple Mini analog recorder
+          //myPort = new Serial(this, portName, 115200, 'E', 8, 2);  // EnergyCam
+          if ( myPort!=null ) {
+            DisplayAddLine("Serial port "+portName+", "+bRate+", 8, 'N', 1 opened successfully.",0,0);
+            DisplayClearLines();
+            ListRecordingOptions();
+            serial_ok ++;  // goto next parameter selection
+			myPort.bufferUntil('\n');
+          } else {
+            DisplayAddLine("Opening port "+portName+", "+bRate+", 8, 'N', 1 ... failed!",-1,-1);
+            DisplayAddLine("Check serial port and try again (press 'n')",-1,0);
+          }
+      }
+      break;
     default:  break;
   }
 }
@@ -188,7 +274,10 @@ void DisplayAddLine(String str, int line, int offset)
   //println("display in line "+disp_line+": "+str);  // debug
   int dLen = disp.length;
   int scroll = (disp_line+1+offset)-dLen;
-  if ( scroll>0) {disp_line = dLen-1; println("scroll is: "+scroll);}
+  if ( scroll>0) {
+    disp_line = dLen-1;
+    //println("scroll is: "+scroll);
+  }
   while ( line==-1 && scroll>0 ) {  // have to scroll?
     for (int i=8; i<dLen-1; i++) disp[i] = disp[i+1];  // scroll all lines one up
     scroll--;
@@ -293,7 +382,7 @@ void PromptUpdate()
 /********************************************************************/
 void SetupRecording()
 {
-  println("SetupRecording - rec_ok: "+rec_ok+", key: "+(char)whichKey);
+  //println("SetupRecording - rec_ok: "+rec_ok+", key: "+(char)whichKey);
   switch (rec_ok) {
     case 0:  // show recording parameter setop option
       switch (whichKey) {
@@ -351,7 +440,7 @@ void ShowScreen()
 /********************************************************************/
 void draw()
 {
-  if ( myKey>0 ) { // proces here the new pressed key
+  if ( myKey>0 ) { // process here the new pressed key
     whichKey = myKey;
     myKey = 0;
     if (whichKey<' ') println("*** pressed key: "+whichKey);  // debug
