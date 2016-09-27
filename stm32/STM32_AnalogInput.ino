@@ -318,7 +318,6 @@ void setup()
 {
 	//Serial.begin(57600);
 	Serial.begin(500000);
-	while(!Serial) {}  // wait for Leonardo
 
 	delay (5000);
 
@@ -351,6 +350,8 @@ void setup()
 	}
 	Serial.println("done.");
 #if 1
+	// for test only. write the existing file with dummy data
+	// this way one can download data even before making acquisition
 	if ( sd.exists(FILE_NAME) ) {
 		// init file with dummy data
 		if ( !file.open(FILE_NAME, O_WRITE) && !file.open(FILE_NAME, O_WRITE) ) {
@@ -361,9 +362,9 @@ void setup()
 		file.rewind();
 		uint32_t fsize = file.fileSize();
 		Serial.print("Writing "); Serial.print(fsize); Serial.print(" dummy data...");
-		for (int i=0;i<fsize;i++) {
+		for (int i=0;i<fsize/2;i++) {
 			file.write(i>>8);
-			file.write((byte)i++);
+			file.write((byte)i);
 		}
 		Serial.println("done.");
 		file.close();
