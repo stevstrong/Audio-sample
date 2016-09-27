@@ -34,7 +34,8 @@ byte screen = 0;
 String[] disp = new String[30];
 int status = 0;
 /*********************************************************************/
-void setup() {
+void setup()
+{
   size(800, 700);
   background(0);
   // create a font with the third font available to the system:
