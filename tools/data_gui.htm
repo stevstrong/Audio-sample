@@ -1,60 +1,44 @@
 <!DOCTYPE HTML>
 <html>
-<head><meta charset="UTF-8"><title>Data GUI</title></head>
+<head><meta charset="UTF-8"><title>Data GUI</title>
+<style>
+.range-slider { border: 1px solid #DDD; margin: 1.11rem 0px; position: relative; height: 1rem; background: #FAFAFA none repeat scroll 0% 0%; }
+.range-slider-handle { cursor: pointer; float: left; height: 1rem; background: #008CBA none repeat scroll 0% 0%; }
+</style>
+</head>
 <body style="font-family: Lekton; font-size: 11pt">
 	<h3>Graphical display of recorded data from Maple Mini</h3>
 	<table><tr>
 	<td width="50px"></td>
-	<!--td width="150px"><div id="xycoordinates" style="visibility:hidden"></div></td-->
-	<!--td width="200px"><div id="td_selection" style="visibility:hidden"></div></td-->
-	<!--td><button type="button" onclick="ClearSelection()">Clear selection</button></td-->
-	<!--td width="150px"><button type="button" onclick="ZoomSelection()">Zoom selection</button></td-->
-	<!--td width="200px"><div id="dindex_select""></div></td-->
-	<!--td width="200px"><div id="range_y""></div></td-->
 	<td width="100px"><button type="button" onclick="ZoomIn()">Zoom in</button></td>
 	<td width="100px"><button type="button" onclick="ZoomOut()">Zoom out</button></td>
 	<td width="200px"><button type="button" onclick="ZoomReset()">Zoom reset</button></td>
-	<td width="350px"><input type="file" id="fileinput" title="Select file..."</input></td>
+	<td width="350px"><input type="file" id="fileinput" title="Select file..." onchange="readSingleFile(event)"</input></td>
 	<td><button type="button" onclick="Audio_SamplePlayer(-1)">Play white noise</button></td>
 	<td> Sampling frequency: </td>
-	<td><input type="number" id="sampleRate" style="width:70px" min="0" max="48000" value="26000" step="1000"> Hz</td>
+	<td><input type="number" id="sampleRate" style="width:70px" min="0" max="48000" value="26000" step="1000"> Hz</input></td>
 	</tr></table>
-	<!-- place holder for canvas -->
 	<div style="position:absolute;left:30px;top:100px">
+		<canvas id='myCanvas' width="1300" height="600" style='z-index: 1; box-shadow: 0px 0px 10px 15px #D5D5D5' onmousemove='ShowCoordinates(event)' onmouseup='mouse_up(event)' onclick='ZoomUpdate()'></canvas>
+		<canvas id='canvas_2' width="1000" height="500" style='z-index: 2; position:absolute;left:40px;top:30px;border:1px solid;box-shadow: inset 0px 0px 10px 5px #D5D5D5'
+			onmousemove='ShowCoordinates(event)' onmousedown='mouse_down(event)' onmouseup='mouse_up(event)' onwheel='mouse_wheel(event)'></canvas>
 	<script type="text/javascript">
-		/******************************************************************************/
-		// default canvas sizes
-		var canvasWidth = 1200;
-		var canvasHeigth = 600;
-		var canvas2Heigth = 300;
-		// labels
-		var fSize = 10;
-		var lineWidthG = 1;
-		var textColor = 'rgba(100,100,100,1)';
-		var gridColor = 'rgba(0,0,0,0.1)'; 
-		var bgColor = 'rgba(255,255,255,1)';
-		var plotColor = ['#FF0000', '#00CC00', '#0000FF', '#FF8800', '#00CC88', '#8800FF', '#CCCC00', '#0088CC', '#CC00CC'];
-		var canvas2_img;
-		/******************************************************************************/
-		// add canvas and data placeholder 
-		document.write("<canvas id='myCanvas' width="+canvasWidth+" height="+canvasHeigth+" style='z-index: 1; box-shadow: 0px 0px 10px 15px #D5D5D5'" +
-		" onmousemove='ShowCoordinates(event)' onmouseup='mouse_up(event)' onclick='ZoomUpdate()'></canvas>");
-		document.write("<canvas id='canvas_2' width="+(canvasWidth-300)+" height="+canvas2Heigth+
-		" style='z-index: 2; position:absolute;left:40px;top:30px;border:1px solid;box-shadow: inset 0px 0px 10px 5px #D5D5D5'" +
-		" onmousemove='ShowCoordinates(event)' onmousedown='mouse_down(event)' onmouseup='mouse_up(event)' onwheel='mouse_wheel(event)'></canvas>");
-		// add listener
-		document.getElementById('fileinput').addEventListener('change', readSingleFile, false);
-		document.getElementById('fileinput').value = '';
-		/******************************************************************************/
+		/**********************************************/
+		// recorded data related variables
 		var totalRange = 0x1000; // max ADC value
-		var data_array = [];//new Array(12000);
-		var alen = data_array.length;
-		var dlen = 0;	// data length
+		var data_array = [];
+		var alen, dlen;	// array and data length
 		var data_is_signed = false;
+		var dindex = {start:0, end:dlen};
+		var selection = [0,0,0,0];	// coordinates of selected area
+		// selected data indexes
+		var coord = {x:0, y:0};
+		var xd = -1; var yd = -1;
+		var m_up = false, m_down = false;
+		document.getElementById("fileinput").value = "";
 		/******************************************************************************/
-		/**********************************************/
 		// parse here the data read from file
-		/**********************************************/
+		/******************************************************************************/
 		function ParseData(dat)
 		{	// convert the read data into an array
 			var datlen = dat.length;
@@ -63,41 +47,28 @@
 			} while ( seqlen!='1' && seqlen!='2' && seqlen!='4' && seqlen!="Cancel");
 
 			seq_len = parseInt(seqlen);
-			var ch0 = [];//new Array();
-			var ch1 = [];//new Array();
+			var ch0 = []; var ch1 = [];
 			if ( seq_len>1 ) {
-				var ch2 = [];//new Array();
-				var ch3 = [];//new Array();
+				var ch2 = [];	var ch3 = [];
 				if ( seq_len>2 ) {
-					var ch4 = [];//new Array();
-					var ch5 = [];//new Array();
-					var ch6 = [];//new Array();
-					var ch7 = [];//new Array();
+					var ch4 = []; var ch5 = []; var ch6 = []; var ch7 = [];
 					var arr = [ch0,ch1,ch2,ch3,ch4,ch5,ch6,ch7];
 				} else
-					var arr = [ch0,ch1,ch2,ch3];//,ch4,ch5,ch6,ch7];
+					var arr = [ch0,ch1,ch2,ch3];
 			} else
-				var arr = [ch0,ch1];//,ch2,ch3,ch4,ch5,ch6,ch7];
-			
+				var arr = [ch0,ch1];
+
 			for (j = 0, i = 0; i<datlen; j++) {
-				arr[0][j] = dat[i++];
-				arr[1][j] = dat[i++];
+				arr[0][j] = dat[i++]; arr[1][j] = dat[i++];
 				if ( seq_len>1 ) {
-					arr[2][j] = dat[i++];
-					arr[3][j] = dat[i++];
-					if ( seq_len>2 ) {
-						arr[4][j] = dat[i++];
-						arr[5][j] = dat[i++];
-						arr[6][j] = dat[i++];
-						arr[7][j] = dat[i++];
-					}
+					arr[2][j] = dat[i++];	arr[3][j] = dat[i++];
+					if ( seq_len>2 ) { arr[4][j] = dat[i++]; arr[5][j] = dat[i++]; arr[6][j] = dat[i++]; arr[7][j] = dat[i++]; }
 				}
 			}
 			alen = arr.length;
 			dlen = arr[0].length;
 			dindex.end = dlen;
 			selection = [0,0,0,0]; xd = -1;
-			//alert("array length: " + alen + ", data length: " + dlen);
 			data_array = arr;
 			// draw the channel selection table
 			prepUI();
@@ -117,11 +88,9 @@
 						var dat = new Int16Array(e.target.result);
 					else
 						var dat = new Uint16Array(e.target.result);
-					//alert( "Got the file: \n"+"name: " + f.name + ",\n"+"type: " + f.type + ",\n"+"size: " + f.size + " bytes, " + dat.length + " samples,\n"+"starts with: " + dat[0]);
 					ParseData(dat);
 				}
-				//r.readAsText(f);
-				r.readAsArrayBuffer(f);
+				r.readAsArrayBuffer(f);	//r.readAsText(f);
 			} else {
 				alert("Failed to load file");
 			}
@@ -129,21 +98,20 @@
 		/**********************************************/
 		// display related variables
 		/**********************************************/
-		var selection = [0,0,0,0];	// coordinates of selected area
-		//var data_head;
-		var xd = -1;
-		var yd = -1;
-		var m_up = false;
-		var m_down = false;
-		// selected data indexes
-		var dindex = {start:0, end:dlen};
-		var last_coord = {x:0, y:0};
 		var canvas1 = document.getElementById("myCanvas");
 		var canvas2 = document.getElementById("canvas_2");
 		var ctx1 = canvas1.getContext("2d");
 		var ctx2 = canvas2.getContext("2d");
 		var hei = canvas2.height;
 		var wid = canvas2.width;
+		var canvas2_img;
+		// labels
+		var fSize = 10;
+		var lineWidthG = 1;
+		var textColor = 'rgba(100,100,100,1)';
+		var gridColor = 'rgba(0,0,0,0.1)'; 
+		var bgColor = 'rgba(255,255,255,1)';
+		var plotColor = ['#FF0000', '#00CC00', '#0000FF', '#FF8800', '#00CC88', '#8800FF', '#CCCC00', '#0088CC', '#CC00CC'];
 		/******************************************************************************/
 		// display related functions
 		/******************************************************************************/
@@ -152,7 +120,7 @@
 			var eltern = canvas1.parentElement;
 			if ( document.getElementById("dataForm") )	document.getElementById("dataForm").remove();
 			// create channel selection form
-			elem = "<div id='dataForm' style='z-index: 3; position:absolute;left:"+(canvasWidth-250)+"px;top:30px;width:220px'></div>";
+			elem = "<div id='dataForm' style='z-index: 3; position:absolute;left:"+(canvas1.width-230)+"px;top:30px;width:220px;margin-left:10px'></div>";
 			eltern.insertAdjacentHTML("BeforeEnd", elem);
 			frm = document.getElementById("dataForm");
 			elem = "<table style='border:1px solid #A5CFE9' rules='all'><tbody id='dataTable'></tbody></table>";
@@ -176,7 +144,7 @@
 		function ShowSelection() {
 			// draw here the transparent rectangular
 			GUI_Restore();
-			var sel_x = last_coord.x;
+			var sel_x = coord.x;
 			if ( sel_x<0 )		sel_x = 0;
 			if ( sel_x>wid )	sel_x = wid;
 			ctx2.strokeRect(selection[0],0,sel_x-selection[0],hei);
@@ -186,11 +154,11 @@
 			// update channel values
 			var elem = document.getElementById("d_index");
 			// refresh parameter values according to selected coordinate
-			if ( elem && last_coord.x>=0 && last_coord.x<=wid ) {
+			if ( elem && coord.x>=0 && coord.x<=wid ) {
 				var d_spacing = (dindex.end - dindex.start)/wid;
 				for (var j=0; j<alen; j++) {
 					if ( document.getElementById("checkbox"+(j+1)).checked ) {
-						var data_index = dindex.start + Math.round(last_coord.x*d_spacing);
+						var data_index = dindex.start + Math.round(coord.x*d_spacing);
 						elem.value = data_index; elem.innerHTML = data_index;
 						document.getElementById("myData"+(j+1)).innerHTML =  data_array[j][data_index];
 					} else {
@@ -199,18 +167,16 @@
 				}
 				GUI_Restore();
 				// draw marker
-				ctx2.moveTo(last_coord.x,0);
-				ctx2.lineTo(last_coord.x,hei);
+				ctx2.moveTo(coord.x,0);
+				ctx2.lineTo(coord.x,hei);
 				ctx2.stroke();
 			}
 		}
 		/**********************************************/
 		function ShowCoordinates(e) {
 			// get coordinates
-			x = e.clientX-70;	//	var x = e.clientX-30;
-			y = e.clientY-130;
-			last_coord.x = x;	//	var x = e.clientX-30;
-			last_coord.y = y;
+			coord.x = x = e.clientX-70;
+			coord.y = y = e.clientY-130;
 			// check mouse up or down event
 			if ( m_down==true ) {
 				m_down = false;
@@ -221,14 +187,14 @@
 				m_up = false;
 				if ( x<0 )		x = 0;
 				if ( x>wid )	x = wid;
-				if ( xd>0 && Math.abs(x-selection[0])>25 ) {
-					selection[2] = x; selection[3] = last_coord.y;
+				if ( xd>=0 && Math.abs(x-selection[0])>25 ) {
+					selection[2] = x; selection[3] = y;
 					ZoomSelection();
 				}
 				xd = -1; selection = [0,0,0,0]; return;
 			}
 			// update GUI
-			if (xd>0)	ShowSelection();
+			if (xd>=0)	ShowSelection();
 			else		ShowMarker();
 		}
 		/**********************************************/
@@ -247,6 +213,7 @@
 		}
 		/**********************************************/
 		function mouse_wheel(e) {
+			if ( document.getElementById("d_index")==null ) return;
 			var ind = document.getElementById("d_index").value;
 			if ( e.deltaY>0 ) { // zoom out
 				dindex.start -= (ind-dindex.start);
@@ -263,6 +230,7 @@
 			if ( dindex.end>dlen ) dindex.end = dlen;
 			GUI_Draw();
 			selection = [0,0,0,0];
+			SliderZoom();
 		}
 		/**********************************************/
 		function ZoomSelection() {
@@ -334,7 +302,8 @@
 			ctx2.lineWidth = lineWidthG;
 			ctx2.strokeStyle = gridColor;
 			// horizontal, x-axis
-			for(var i=0; i<=d_len; i++) {
+			var i, temp;
+			for(i=0; i<=d_len; i++) {
 				if ( ((dindex.start+i)%step)==0 ) {	// draw only one value each step
 					temp = i*spacH;
 					ctx1.fillText( Math.floor(dindex.start+i), 40+temp-10, posY+20);	// offset of 30 due to canvas2 left position
@@ -371,14 +340,15 @@
 			
 			DrawLabels(spacingHorizontal, verticalCoefficient);
 			//alert("GUI_Draw: d_len: " + d_len);
+			var i,j,ldataId,elemid,mov,dat,xp,yp;
 			for (var j=0; j<alen; j++)
 			{
 				// actualize the last values in the table
-				var ldataId = document.getElementById("myData"+(j+1));
+				ldataId = document.getElementById("myData"+(j+1));
 				//alert("DrawLabels: j = "+j);
 				ldataId.innerHTML = data_array[j][dindex.end-1];
 				// check check-box status
-				var elemid = document.getElementById("checkbox"+(j+1));
+				elemid = document.getElementById("checkbox"+(j+1));
 				mov = elemid.checked;
 				if ( mov )	// plot data only if check-box is checked
 				{
@@ -386,11 +356,11 @@
 					ctx2.beginPath();
 					ctx2.strokeStyle = plotColor[j];
 					ctx2.fillStyle = plotColor[j];
-					for (var i=0; i<d_len; i++)
+					for (i=0; i<d_len; i++)
 					{
-						var dat = data_array[j][dindex.start+i];
-						var xp = i*spacingHorizontal;
-						var yp = 0.95*hei - (dat-gr.ymin)*verticalCoefficient;
+						dat = data_array[j][dindex.start+i];
+						xp = i*spacingHorizontal;
+						yp = 0.95*hei - (dat-gr.ymin)*verticalCoefficient;
 						if (i==0) ctx2.moveTo(xp, yp);
 						else	ctx2.lineTo(xp, yp);
 					}
@@ -446,6 +416,87 @@
 			source.start();
 		}
 	</script>
+<div style="position:absolute; z-index: 3; width:1000px; top:550px; margin-left:40px; padding:0;">
+<div class="range-slider" id="mySliderDiv" slider-value="10"><div class="range-slider-handle" id="mySliderHandle"></div></div>
+<div id='info'>info</div>
+</div>
+<script>
+	var slider_bar = document.getElementById('mySliderDiv');
+	var slider_handle = document.getElementById('mySliderHandle');
+	var slbar_width = slider_bar.offsetWidth;
+	slider_handle.style.width = slbar_width+"px";
+	//console.log("slbar_width: "+slbar_width+", sl_hanlde_width: "+slider_handle.offsetWidth);
+	var pos;
+	SliderInit();
+function SliderInit(){
+	//slider_handle.style.transform = "translateX(259px)";
+	slider_handle.style.marginLeft = (slbar_width-slider_handle.offsetWidth)/2+"px";
+	slider_bar.addEventListener('mousedown', startSlide, false);
+	slider_bar.addEventListener('mouseup', stopSlide, false);
+	//slider_bar.addEventListener('mouseout', stopSlide, false);
+}
+function SliderZoom(){
+	var d_len = (dindex.end-dindex.start);
+	val = (slbar_width*d_len/dlen).toFixed(2);
+	if (val<10) val = 10;	// lower width limit
+	console.log("SliderZoom: d_len: "+d_len+", val: "+val);
+	slider_handle.style.width = val+"px";
+	e = document.getElementById("d_index");
+	if ( e==null ) return;
+/*	pos = (e.value-dindex.start)/d_len;
+	info.innerHTML = (pos*100).toFixed(1) + '%';
+	*/
+	mLeft = slbar_width*dindex.start/dlen;
+	//console.log("slider width: "+slider_handle.offsetWidth);
+	slider_handle.style.marginLeft = mLeft+"px";
+	//pos = mLeft + slider_handle.style.width/2;
+}
+function SliderUpdate(){
+	// convert pos to data index values
+	d_len = dindex.end-dindex.start;
+	dindex.start = Math.round((+1-2*(1-pos))*d_len/2);	// get new starting point
+	dindex.start = Math.round((+1-2*(1-pos))*d_len/2);	// get new starting point
+	dindex.end = dindex.start + d_len;
+	diff = dindex.end-dlen;
+	if ( diff>0 ) {
+		dindex.end = dlen;
+		dindex.start = dlen-d_len;
+	}
+	d_len = dindex.end-dindex.start;
+	console.log("SliderUpdate: dindex.start: "+dindex.start+", d_len: "+d_len);
+	CanvasUpdate();
+}
+function CanvasUpdate(){
+	//slider_handle.style.marginLeft = (-(slider_handle.offsetWidth*pos)+(pos*slbar_width)).toFixed(1)+"px";
+	canvas2.width = canvas2.width;	// reset canavas
+	if (ctx2 && canvas2_img) ctx2.drawImage(canvas2_img, ((+1-2*pos)*canvas2.width/2), 0);
+	//SliderZoom();
+}
+function GetPosition(event){
+	//var pos = ((event.clientX - slider_bar.offsetLeft) / (slider_bar.offsetWidth+slider_handle.offsetWidth)).toFixed(2);
+	pos = (event.clientX - 70)/slider_bar.offsetWidth;
+	if ( pos>1 ) pos = 1;
+	if ( pos<0 ) pos = 0;
+	info.innerHTML = (pos*100).toFixed(1) + '%';
+	slider_handle.style.marginLeft = (pos*(slider_bar.offsetWidth-slider_handle.offsetWidth)).toFixed(1)+"px";
+	SliderUpdate();
+}
+function startSlide(event){
+	GetPosition(event);
+	document.addEventListener('mousemove', moveSlide, false);	
+	document.addEventListener('mouseup', stopSlide, false);
+}
+function moveSlide(event){
+	GetPosition(event);
+}
+function stopSlide(event){
+	GetPosition(event);
+	//info.innerHTML = 'done : ' + set_perc + '%';
+	document.removeEventListener('mousemove', moveSlide, false);
+	document.removeEventListener('mouseup', stopSlide, false);
+	ZoomUpdate();
+}
+</script>
 	</div>
 </body>
 </html>
