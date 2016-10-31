@@ -136,17 +136,22 @@ void ParseBinaryData()
 	//while (true) {
 		// get header ID
 		if ( (a=GetByteFromSerial())<0 ) {
+			print("Error receiving binary data!");
+			bin_rec = false;
 			return;
 		}
 
 		if ( a==0x01 ) {	// parse header info
 			// get here payload length
-			len = GetByteFromSerial()<<8;
-			len += GetByteFromSerial();
+			len = GetByteFromSerial();
+			len += GetByteFromSerial()<<8;
 			//println("payload length: "+len);	// debug
 			// wait for entire payload reception
-			if ( GetPayload(len)>0 ) return;
-			myPort.write(0x06);	// send acknowledge
+			if ( GetPayload(len)>0 ) {
+				println("\n<-> payload reception error <->\n");
+				bin_rec = false;
+				return;
+			}
 	/**/
 			if ( (index+len)<=data.length ) {
 				arrayCopy(inBuffer,0,data,index,len);
@@ -190,7 +195,7 @@ void ParseStringData(String inStr)
 	q = splitTokens(inStr, "\r\n");
 	for (byte i=0; i<q.length; i++) {
 		//DisplayAddLine(i+": "+q[i], -1,0);  // display received serial data
-		println(i+": "+q[i]);
+		println("> "+q[i]);
 		// check binary marker
 		if ( q[i].indexOf(">>>")>=0 ) {
 			println("binary transmission active");
@@ -285,7 +290,7 @@ void DisplayAddLine(String str, int line, int offset)
   }
   if ( line==-1 ) {  // add to last available line
     disp[disp_line+=offset] = str;
-    if ((++disp_line)>dLen) disp_line = dLen;  // plausability check for line
+    if ((++disp_line)>dLen) disp_line = dLen;  // limit check for line
   } else {
     disp[line] = str;
     disp_line = line+1;
@@ -358,7 +363,7 @@ void PromptUpdate()
           break;
         case SAMPLING_FREQ:
           sampling_freq = res;
-          String[] scr2 = {"- sampling frequency: "+sampling_freq+" [kHz]","","Enter number of channels per sequence:"};
+          String[] scr2 = {"- sampling frequency: "+sampling_freq+" [Hz]","","Enter number of channels per sequence:"};
           DisplayAddLines(scr2,-1,-3);
           PromptReset();
           DisplayAddLine(prompt,-1,0);
@@ -390,7 +395,7 @@ void SetupRecording()
         case '0':  // recording parameter setup
           String[] scr = {"[0] - setup recording now using following parameters:",
                           "          - recording time = "+rec_time+" ms",
-                          "          - sampling frequency = "+sampling_freq+" kHz",
+                          "          - sampling frequency = "+sampling_freq+" Hz",
                           "          - samples per sequence = "+samples_per_seq,
                           "[1] - change parameters","[2] : return","--------------------------------------"};
           DisplayAddLines(scr,4,0);
@@ -445,7 +450,7 @@ void draw()
     whichKey = myKey;
     myKey = 0;
     if (whichKey<' ') println("*** pressed key: "+whichKey);  // debug
-    else println("*** pressed key: '"+(char)whichKey+"'");  // debug
+    else println("pressed key: '"+(char)whichKey+"'");  // debug
     if ( rec_ok>=0 )  SetupRecording();
     if ( serial_ok>=0 )  SetupSerial();
     ShowScreen();  // display text lines
