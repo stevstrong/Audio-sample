@@ -55,7 +55,9 @@ uint8_t use_diff_channels = 0;
 #define BLOCK_SIZE				512	// bytes
 #define SAMPLE_SIZE				4	// dual 16 bits, combined value of ADC2 (high word) and ADC1 (low word)
 #define SAMPLES_PER_BLOCK		(BLOCK_SIZE/SAMPLE_SIZE)
-#define SAMPLES_PER_BUFFER		(2*SAMPLES_PER_BLOCK)	// the buffer size is twice the block size
+#define BLOCKS_PER_BUFFER		16
+#define BLOCKS_PER_BUFFER_MASK (BLOCKS_PER_BUFFER-1)
+#define SAMPLES_PER_BUFFER		(BLOCKS_PER_BUFFER*SAMPLES_PER_BLOCK)	// the buffer size is twice the block size
 // some default values
 #define RECORD_SIZE				2	// 16 bits result of an ADC conversion
 #define RECORDS_PER_BLOCK		(BLOCK_SIZE/RECORD_SIZE)
@@ -179,12 +181,12 @@ void DMA_Rx_irq(void)
 	if (dma_isr&DMA_ISR_HTIF1) {
 		dma_irq_half_complete = 1;
 		buff0_stored = 0;	// reset storage flag to detect overrun
-		if ( buff1_stored==0 )	overrun++;	// upper buffer half being written before was stored
+		//if ( buff1_stored==0 )	overrun++;	// upper buffer half being written before was stored
 	}
 	if (dma_isr&DMA_ISR_TCIF1) {
 		dma_irq_full_complete = 1;
 		buff1_stored = 0;	// reset storage flag to detect overrun
-		if ( buff0_stored==0 )	overrun++;	// lower buffer half being written before was stored
+		//if ( buff0_stored==0 )	overrun++;	// lower buffer half being written before was stored
 	}
 	dma_clear_isr_bits(DMA1, DMA_CH1);
 }
@@ -649,6 +651,7 @@ void SD_buffer_to_card(byte buf)
 	buff_index = buf;
 	//	copy data from ADC buffer to SD cache
 	uint32_t * sp = adc_buffer+(buf*SAMPLES_PER_BLOCK);
+#if 0
 	uint32_t * dp = (uint32_t*)pCache;
 	if ( use_diff_channels ) {
 		dp += (buf*SAMPLES_PER_BLOCK/2);	// adjust destination pointer for second half cache
@@ -674,8 +677,25 @@ void SD_buffer_to_card(byte buf)
 		error("writeData failed");
 	}
 //	tw = micros() - tw;
+#else
+	// write a 512 byte block to card
+	if (!sd.card()->writeData((const uint8_t*)sp)) {
+		error("writeData failed");
+	}
+#endif
 }
 /*****************************************************************************/
+/*****************************************************************************/
+uint8_t DMA_CheckStatus(void)
+{
+	// check number of sampled and transferred data
+	uint32_t cndtr1 = DMA1->regs->CNDTR1;	// remaining ADC samples to be written to ADC buffer
+	if ( cndtr1==0 ) cndtr1++; // avoid head_bl to get the value of BLOCKS_PER_BUFFER as index
+	cndtr1 = SAMPLES_PER_BUFFER-cndtr1;	// number of finished ADC samples
+	uint16_t head_bl = cndtr1/SAMPLES_PER_BLOCK; // number of block which is currently being written by DMA
+	uint16_t tail_bl = block_nr&BLOCKS_PER_BUFFER_MASK; // number of block which should be next written to SD card
+	return (head_bl-tail_bl)&BLOCKS_PER_BUFFER_MASK; // blocks ready to be written to card
+}
 /*****************************************************************************/
 void loop()
 {
@@ -692,27 +712,37 @@ void loop()
 	uint32_t dma_irq_full_complete_count = 0;
 	uint32_t dma_irq_half_complete_count = 0;
 
-	uint32_t tstart = micros();
+	uint32_t trun, tstart = micros();
 	//uint32_t buf_index = 0;
-	//uint32_t * cmar;	// next memory value when ADC finished the sequence conversion
 	// let timer run - do this just before generating an update trigger by SW
 	timer_resume(TIMER3);
 	// from now on, the sampling of sequences should be automatically triggered by Timer3 update event.
 	// sample until number of input blocks was filled with data
 	for(block_nr=0; block_nr<total_blocks; ) {
 		// time-out to avoid hangup if something goes wrong
-		tout = 1000000;
+		trun = millis();
+		tout = 0;
 		// each ADC sequence is sampled triggered by TIMER3 event.
-		while ( (--tout)>0 ) {
-/*			cmar = &adc_buffer[buf_index];	// next memory value when ADC finished the sequence conversion
-			// check end of sequence conversion
-			if ( (uint32_t*)DMA1->regs->CMAR1 != cmar ) {	// wait for end of ADC conversion sequence
-				// store data to card
-				file.write((uint8_t*)cmar, 4);	// store the first 2 records only
-				file.sync();	// write data to card
-				buf_index += samples_per_sequence;
+		while ( tout==0 ) {
+			/**/
+			if ( dma_irq_half_complete ) {
+				dma_irq_half_complete = 0;
+				dma_irq_half_complete_count++;
 			}
-*/			// check buffer status and push data to card if necessary
+			if ( dma_irq_full_complete ) {
+				dma_irq_full_complete = 0;
+				dma_irq_full_complete_count++;
+			}
+			// check the end of filling a complete block: head_bl must be different to tail_bl
+			if ( DMA_CheckStatus()>0 ) {
+				SD_buffer_to_card(block_nr&BLOCKS_PER_BUFFER_MASK);	// store next block of data to card
+				// check overflow
+				if ( DMA_CheckStatus()==0 ) { overrun++; } // the block being saved to card is being overwritten by DMA
+				block_nr ++;
+				break;
+			}
+			/*
+			// check buffer status and push data to card if necessary
 			if ( dma_irq_half_complete ) {
 				dma_irq_half_complete = 0;
 				if ( (dma_irq_half_complete_count++)>0) {	// don't record first lower block
@@ -731,10 +761,11 @@ void loop()
 				}
 				buff1_stored = 1;
 				break;
-			}/**/
+			}*/
+			if ( (millis()-trun)>1000 ) tout = 1;
 		}
 		// only for debug purposes:
-		if ( tout==0 ) {
+		if ( tout>0 ) {
 			Serial.println(F("\n!!!! TIME_OUT !!!")); break;
 		}
 	}
@@ -818,7 +849,7 @@ ret_1:
 	}
 	cout << F("binary_length: ") << ((endBlock*BLOCK_SIZE)) << endl;	// send binary data length
 	delay(250);
-	cout << F(">>>");	// send binary start marker
+	cout << F(">>>\n");	// send binary start marker
 	if ( COM_RecAck()==0 ) {
 		goto ret_2;	//Serial.write(0x05);	// send binary enquiry
 	}
