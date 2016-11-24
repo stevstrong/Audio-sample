@@ -72,7 +72,8 @@ void CheckSerial()
 		ParseBinaryData();
 	} else {  // string reception
 		//String inStr = myPort.readString();	ParseStringData(inStr);
-		ParseStringData(myPort.readString());
+		//ParseStringData(myPort.readString());
+		ParseStringData(myPort.readBytesUntil('\n', inBuffer));
 	}
 }
 /********************************************************************
@@ -190,14 +191,17 @@ void ParseBinaryData()
 /********************************************************************/
 String[] q,m;
 /********************************************************************/
-void ParseStringData(String inStr)
+//void ParseStringData(String inStr)
+void ParseStringData(int nrBytes)
 {
-	q = splitTokens(inStr, "\r\n");
-	for (byte i=0; i<q.length; i++) {
+	if ( nrBytes<2 ) return;
+	//q = splitTokens(inStr, "\r\n");
+	//for (byte i=0; i<q.length; i++) {
 		//DisplayAddLine(i+": "+q[i], -1,0);  // display received serial data
-		println("> "+q[i]);
+		String inStr = new String(inBuffer, 0, nrBytes-1);
+		println("> "+inStr);
 		// check binary marker
-		if ( q[i].indexOf(">>>")>=0 ) {
+		if ( inStr.indexOf(">>>")>=0 ) {
 			println("binary transmission active");
 			DisplayAddLine("receiving data...", -1,0);
 			bin_rec = true;
@@ -210,7 +214,7 @@ void ParseStringData(String inStr)
 
 		} else if (bin_len==0) {
 			// parse the binary length
-			m = match(q[i], "binary_length:\\s*(\\d*)");
+			m = match(inStr, "binary_length:\\s*(\\d*)");
 			if ( m!=null ) {
 				bin_len = parseInt(m[1]);
 				println("bin_len = "+bin_len);
@@ -218,7 +222,7 @@ void ParseStringData(String inStr)
 				data = new byte[bin_len];
 			}
 		}
-	}
+	//}
 }
 /********************************************************************/
 void SetupSerial()
@@ -449,7 +453,7 @@ void draw()
   if ( myKey>0 ) { // process here the new pressed key
     whichKey = myKey;
     myKey = 0;
-    if (whichKey<' ') println("*** pressed key: "+whichKey);  // debug
+    if (whichKey<' ') println("pressed key: "+whichKey);  // debug
     else println("pressed key: '"+(char)whichKey+"'");  // debug
     if ( rec_ok>=0 )  SetupRecording();
     if ( serial_ok>=0 )  SetupSerial();
