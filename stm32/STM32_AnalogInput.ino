@@ -16,6 +16,8 @@
 
 //#define Serial Serial1
 
+//#define USE_FAT 1
+
 /********************************************************************/
 // Configuration
 /********************************************************************/
@@ -37,10 +39,11 @@ uint8_t use_diff_channels = 0;
 // SD card chip select pin
 #define CHIP_SELECT PB12
 
-#define FILE_NAME	("RawWrite.txt")
-
+#ifdef USE_FAT
+  #define FILE_NAME	("RawWrite.txt")
+#endif
 // use for debug, comment out when not needed
-#define DEBUG_PIN	PB3 //PA8
+//#define DEBUG_PIN	PB13 //PA8
 //#define DEBUG_PIN_SET	( GPIOA->regs->BSRR = (1U << 8) )
 //#define DEBUG_PIN_CLEAR	( GPIOA->regs->BSRR = (1U << 8) << 16 )
 #define LED_PIN		PB1 // maple mini
@@ -118,11 +121,14 @@ volatile uint32_t dma_isr;	// must not be global, make it local later
 volatile uint8_t buff0_stored, buff1_stored, buff_index;
 /********************************************************************/
 // file system
+// use SPI 2 because SPI 1 pins are used as analog input
+//SdFat sd(2); // use SPI port 2
 SdFat sd;
 // test file
 #ifdef USE_FAT
-SdFile file;
+SdFile file; // file class
 #endif
+
 #define error(s) sd.errorHalt(F(s))
 uint8_t * pCache;
 
@@ -168,8 +174,6 @@ void DMA_Init(void)
 	buff0_stored = buff1_stored = 1;	// avoid overrun detection
 	buff_index = 0;
 	dma_clear_isr_bits(DMA1, DMA_CH1);
-	// for test only: fill ADC buffer with dummy data
-	for (int i = 0; i<ADC_BUFFER_SIZE; i++)	{ adc_buffer[i] = 0x11111111; }
 }
 /*****************************************************************************/
 // This is our DMA interrupt handler.
@@ -222,7 +226,6 @@ dma_tube_config my_tube_cfg = {
 	// Turn on the DMA tube. It will now begin serving requests.
 	dma_enable(DMA1, DMA_CH1);
 
-//debug	Serial.print(F("DMA1->regs->CNDTR1: ")); Serial.println(DMA1->regs->CNDTR1);
 	Serial.println("done.");
 }
 /*****************************************************************************/
@@ -334,11 +337,12 @@ void SD_Init(void)
 	}
 	cout << "bgnBlock: " << bgnBlock << ", endBlock: " << endBlock  << (", writing cache...");
 	// write block 0 with recording parameters
+	memset((uint8*)pCache,0,BLOCK_SIZE); // clear cache
 	sprintf((char*)pCache, "sampling_frequency=%u;\nsamples_per_sequence=%u;\nrecords_per_sample=%u;\nendBlock=%u;\n",
 							sampling_frequency, (samples_per_sequence), records_per_sample, endBlock);
-	//cout << pCache;
-	if (!sd.card()->writeData(pCache) )
-		error("writing cache failed!");
+	//cout << pCache; // show on serial what has been written
+	if (!sd.card()->writeData(pCache) ) // write to card
+		error("writing cache block 0 failed!");
 #endif
 	Serial.println("done.");
 }
@@ -405,12 +409,14 @@ uint8_t csdDmp() {
 /*****************************************************************************/
 void SD_Info(void)
 {
+	SPI.setModule(2); // remove for the new SD Fat beta
+
 	uint32_t t = millis();
 	cout << ("initializing the SD card...");
 	// initialize the SD card
+	//if ( !sd.begin(CHIP_SELECT, SPISettings(18000000)) ) { // SPI clock value
 	if ( !sd.begin(CHIP_SELECT, SPI_CLOCK_DIV2) ) {
 		//sd.initErrorHalt("card begin failed!"); // ignore FAT record error
-		sd.errorPrint("card begin failed!");
 	}
 	cout << ("done.") << endl;
 	t = millis() - t;
@@ -433,6 +439,66 @@ void SD_Info(void)
 	}
 	cidDmp();
 	csdDmp();
+#if 0
+	// test sequence for the newly implemented compressed data storage
+	uint32 * p = adc_buffer;
+	Serial.print("ADC buffer lower half address: "); Serial.println((uint32)p, HEX);
+	uint16 * p1 = (uint16*)adc_buffer+(ADC_BUFFER_SIZE/2);
+	Serial.print("ADC buffer upper half  (16b*): "); Serial.println((uint32)p1, HEX);
+	p = adc_buffer+(ADC_BUFFER_SIZE/2);
+	Serial.print("ADC buffer upper half  (32b*): "); Serial.println((uint32)p, HEX);
+//return;
+
+	// fill the ADC buffer with test values
+	p = adc_buffer;
+	//int16 cnt[] = { 0x400, 0x500, 0x600, 0x700, 0x800, 0x900, 0xa00, 0xb00}; // start values
+	int16 cnt[] = { 0x400, 0x600, 0x800, 0xa00}; // start values
+	int16 dir[] = { 0, 1, 0, 1};//, 0, 1, 0, 1}; // count direction: 0=up, 1=down
+	int16 diff[] = { 64, -64, 64, -64};//, 64, -64, 64, -64};  // difference values
+	uint16 val;
+	//for (uint16 i=0; i<(ADC_BUFFER_SIZE/4); i++) { // 8 channels
+	for (uint16 i=0; i<(ADC_BUFFER_SIZE/2); i++) { // 4 channels
+		// prepare test data
+		//for (uint8 j = 0; j<8; j++) { // 8 channels
+		for (uint8 j = 0; j<4; j++) { // 4 channels
+			val = (cnt[j] + diff[j]);
+			if ( (val)<0x200 ) {val=0x200; dir[j]=0; diff[j]=0;}
+			if ( (val)>0xd00 ) {val=0xd00; dir[j]=1; diff[j]=0;}
+			cnt[j] = val;
+			if ( dir[j]==0 ) { // value up
+				if ( (diff[j]+=10)>127 ) { diff[j] = 127; }
+			} else {
+				if ( (diff[j]-=10)<-128 ) { diff[j] = -128; }
+			}
+		}
+		// write test data to adc_buffer
+		*p++ = (uint32)(cnt[1]<<16) | cnt[0];
+		*p++ = (uint32)(cnt[3]<<16) | cnt[2];
+		//*p++ = (uint32)(cnt[5]<<16) | cnt[4];
+		//*p++ = (uint32)(cnt[7]<<16) | cnt[6];
+	}
+	total_blocks = 4;
+	SD_Init();
+	p = adc_buffer;
+	// write the first 512 byte block to card
+	if (!sd.card()->writeData((const uint8_t*)p)) {
+		error("writing lower ADC buffer failed");
+	}
+	p = adc_buffer+(ADC_BUFFER_SIZE/2);
+	// write the second 512 byte block to card
+	if (!sd.card()->writeData((const uint8_t*)p)) {
+		error("writing upper ADC buffer failed");
+	}
+	// compress data from adc_buffer to cache and write cache to card 
+	SD_buffer_to_card(0);
+	SD_buffer_to_card(1);
+	// end multiple block write mode
+	if (!sd.card()->writeStop()) {
+		Serial.println(F("\nERROR: sd.card->writeStop failed!"));
+		error("writeStop failed");
+	}
+	Serial.println("Test data writen to card.");
+#endif
 }
 /*****************************************************************************/
 /*****************************************************************************/
@@ -441,7 +507,7 @@ void setup()
 	//Serial.begin(57600);
 	Serial.begin(500000);
 
-#if defined DEBUG_PIN
+#ifdef DEBUG_PIN
 	pinMode(DEBUG_PIN, OUTPUT);
 	digitalWrite(DEBUG_PIN, 0);
 #endif
@@ -449,12 +515,9 @@ void setup()
 	while ( !Serial.isConnected() ) Blink(500,500);
 	
 	cout << F("\n***** ADC dual regular simultaneous mode acquisition *****\n");
-#if defined DEBUG_PIN
-	cout << F("Debug version!");
+#ifdef DEBUG_PIN
+	cout << F("Debug version!\n");
 #endif
-
-	// use SPI 2 because SPI 1 pins are used as analog input
-	SPI.setModule(2);
 
 	// set port mode of used analog input pins
 	// comment out lines of not used analog input pins
@@ -469,8 +532,9 @@ void setup()
 	pinMode(ADC_IN8, INPUT_ANALOG);
 	
 	SD_Info();
-	
-#if 0
+
+#ifdef USE_FAT
+  #if 0
 	// for test only. write the existing file with dummy data
 	// this way one can download data even before making acquisition
 	if ( sd.exists(FILE_NAME) ) {
@@ -491,7 +555,8 @@ void setup()
 		file.close();
 		file.close();
 	}
-#endif
+  #endif
+#endif // USE_FAT
 }
 /*****************************************************************************/
 bool start = false;
@@ -648,10 +713,15 @@ void CheckSerial()
 /*****************************************************************************/
 void SD_buffer_to_card(byte buf)
 {
-	buff_index = buf;
 	//	copy data from ADC buffer to SD cache
 	uint32_t * sp = adc_buffer+(buf*SAMPLES_PER_BLOCK);
-#if 0
+
+#if 1
+	// write a 512 byte block from ADC buffer directly to card
+	if (!sd.card()->writeData((const uint8_t*)sp)) {
+		error("writeData failed");
+	}
+#else
 	uint32_t * dp = (uint32_t*)pCache;
 	if ( use_diff_channels ) {
 		dp += (buf*SAMPLES_PER_BLOCK/2);	// adjust destination pointer for second half cache
@@ -677,11 +747,6 @@ void SD_buffer_to_card(byte buf)
 		error("writeData failed");
 	}
 //	tw = micros() - tw;
-#else
-	// write a 512 byte block to card
-	if (!sd.card()->writeData((const uint8_t*)sp)) {
-		error("writeData failed");
-	}
 #endif
 }
 /*****************************************************************************/
@@ -708,12 +773,10 @@ void loop()
 
 	Serial.print(F("-> sampling started..."));
 
-	uint32_t tout;	// time-out
-	uint32_t dma_irq_full_complete_count = 0;
-	uint32_t dma_irq_half_complete_count = 0;
+	uint16 dma_irq_full_complete_count = 0;
+	uint16 dma_irq_half_complete_count = 0;
 
-	uint32_t trun, tstart = micros();
-	//uint32_t buf_index = 0;
+	uint32 trun, tout, tstart = micros();
 	// let timer run - do this just before generating an update trigger by SW
 	timer_resume(TIMER3);
 	// from now on, the sampling of sequences should be automatically triggered by Timer3 update event.
@@ -741,27 +804,6 @@ void loop()
 				block_nr ++;
 				break;
 			}
-			/*
-			// check buffer status and push data to card if necessary
-			if ( dma_irq_half_complete ) {
-				dma_irq_half_complete = 0;
-				if ( (dma_irq_half_complete_count++)>0) {	// don't record first lower block
-					SD_buffer_to_card(0);	// store lower block data to card
-					if ( use_diff_channels==0 )	block_nr++;	// adjust number of blocks at half-buffer
-				}
-				buff0_stored = 1;
-				break;
-			}
-			if ( dma_irq_full_complete ) {
-				dma_irq_full_complete = 0;
-				if ( (dma_irq_full_complete_count++)>0) {	// don't record first upper block
-					SD_buffer_to_card(1);	// store upper block data to card
-					//buf_index = 0;
-					block_nr++;
-				}
-				buff1_stored = 1;
-				break;
-			}*/
 			if ( (millis()-trun)>1000 ) tout = 1;
 		}
 		// only for debug purposes:
@@ -789,16 +831,15 @@ void loop()
 	Serial.print(F("Recording time for 1 block (useconds): ")); Serial.println(t/(double)block_nr);
 	Serial.print(F("Number of records: "));  Serial.println(total_records);	//TOTAL_SEQUENCES
 	Serial.print(F("Time for 1 record (useconds): ")); Serial.println(t/(double)total_records);
-/*debug
-	Serial.print(F("dma_irq_counter: ")); Serial.println(dma_irq_counter);
-*/	Serial.print(F("dma_irq_half_complete_count: ")); Serial.println(dma_irq_half_complete_count);
+/**/
+	Serial.print(F("dma_irq_half_complete_count: ")); Serial.println(dma_irq_half_complete_count);
 	Serial.print(F("dma_irq_full_complete_count: ")); Serial.println(dma_irq_full_complete_count);
 
 	// OPTIONAL: print last samples from ADC buffer to check validity
 	//SendData();
 }
 /***************************************************************************/
-#define BUFF_SIZE	1024
+#define BUFF_SIZE	(2*BLOCK_SIZE) // 1024 bytes, experimental value for optimal upload speed
 uint8 buf[BUFF_SIZE] __attribute__ ((aligned(1)));
 /*****************************************************************************/
 void TransmitBinaryData(void)
@@ -844,12 +885,11 @@ ret_1:
 	if ( (ptr=strstr((const char*)buf, "endBlock"))>0 ) {
 		endBlock = atoi((const char*)ptr+9);
 	} else {
-		cout << F("Could not read endBlock.");
+		cout << F("Could not read endBlock.\n");
 		return;
 	}
-	cout << F("binary_length: ") << ((endBlock*BLOCK_SIZE)) << endl;	// send binary data length
-	delay(250);
-	cout << F(">>>\n");	// send binary start marker
+	cout << ("binary_length: ") << ((endBlock*BLOCK_SIZE)) << endl;	// send binary data length
+	cout << (">>>\n");	// send binary start marker
 	if ( COM_RecAck()==0 ) {
 		goto ret_2;	//Serial.write(0x05);	// send binary enquiry
 	}
@@ -877,7 +917,7 @@ ret_1:
 ret_2:
 #endif
 
-	Serial.write(0x17); 	// end of binary transmission
+	Serial.write(0x17); // end of binary transmission
 	str_mode = true;	// switch back to string mode
 }
 
