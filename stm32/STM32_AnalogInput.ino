@@ -715,7 +715,6 @@ void SD_buffer_to_card(byte buf)
 {
 	//	copy data from ADC buffer to SD cache
 	uint32_t * sp = adc_buffer+(buf*SAMPLES_PER_BLOCK);
-
 #if 1
 	// write a 512 byte block from ADC buffer directly to card
 	if (!sd.card()->writeData((const uint8_t*)sp)) {
