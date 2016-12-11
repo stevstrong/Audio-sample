@@ -10,20 +10,17 @@
 	---------------------------------------------------------------------------------
 */
 
-
 #include <libmaple/adc.h>
 #include <libmaple/dma.h>
 #include <libmaple/gpio.h>
 #include <SPI.h>
-
-//#define Serial1 Serial1
 
 /********************************************************************/
 // Configuration
 /********************************************************************/
 // setup recording parameters
 uint16_t recording_time = 1000;			// in milliseconds
-uint32_t sampling_frequency = 20000;	// in Hz
+uint32_t sampling_frequency = 44100;	// in Hz
 // Set the ADC input channel sequences (left will be first)
 #define SAMPLES_PER_SEQUENCE 8
 #define RECORDS_PER_SEQUENCE (SAMPLES_PER_SEQUENCE*2)
@@ -39,9 +36,6 @@ uint8_t records_per_sequence = RECORDS_PER_SEQUENCE;
 /********************************************************************/
 // variables
 /********************************************************************/
-volatile uint8_t dma_irq_full_complete;	// set by HW when a complete DMA transfer was finished.
-volatile uint8_t overrun;	// set by SW when overrun occurs
-volatile uint8_t buff_sent;	// overrun management
 
 /*****************************************************************************/
 /*****************************************************************************/
@@ -115,30 +109,7 @@ void TIMER_Setup(void)
 	// don't forget to set the ADC trigger source to TIMER3->TRG0. Do it before enabling the ADC !!!
 }
 /*****************************************************************************/
-/*****************************************************************************/
-void DMA_Init(void)
-{
-	dma_irq_full_complete = 0;
-	overrun = 0;
-	buff_sent = 1;	// avoid overrun detection
-	dma_clear_isr_bits(DMA1, DMA_CH1);
-	// for test only: fill ADC buffer with dummy data
-	for (int i = 0; i<SAMPLES_PER_SEQUENCE; ) adc_buffer[i++] = 0x11111111;
-}
-/*****************************************************************************/
-/*****************************************************************************/
-void DMA_RX_ISR(void)
-{
-// Used to store DMA interrupt status register (ISR) bits. This helps explain what's going on
-	uint32_t dma_isr = dma_get_isr_bits(DMA1, DMA_CH1);
-	if (dma_isr&DMA_ISR_TCIF1) {
-		dma_irq_full_complete = 1;
-		if ( buff_sent==0 )	overrun++;	// lower buffer half being written before was stored
-		buff_sent = 0;
-	}
-	dma_clear_isr_bits(DMA1, DMA_CH1);
-}
-/*****************************************************************************/
+// DMA tube configuration
 dma_tube_config my_tube_cfg = {
 	&ADC1->regs->DR,	// data source address
 	DMA_SIZE_32BITS,	// source transfer size
@@ -146,30 +117,25 @@ dma_tube_config my_tube_cfg = {
 	DMA_SIZE_32BITS,	// destination transfer size
 	SAMPLES_PER_SEQUENCE,	// nr. of data to transfer
 	// tube flags: auto increment dest addr, circular buffer, set tube full IRQ, very high prio:
-	( DMA_CFG_DST_INC | DMA_CFG_CIRC | DMA_CFG_CMPLT_IE | DMA_CCR_PL_VERY_HIGH ),
+	( DMA_CFG_DST_INC | DMA_CFG_CIRC | DMA_CCR_PL_VERY_HIGH ),
 	0,	// unused
 	DMA_REQ_SRC_ADC1,	// Hardware DMA request source
 };
 /*****************************************************************************/
 void DMA_Setup(void)
 {
-// DMA tube configuration
-
-	Serial1.print(F("preparing the DMA..."));
-	DMA_Init();
-	dma_disable(DMA1, DMA_CH1);	// disable the DMA tube
+	Serial1.print("preparing the DMA...");
 	dma_init(DMA1);	// turn DMA on
 	my_tube_cfg.tube_nr_xfers = samples_per_sequence;	// configure DMA nr of transfers
 	int ret = dma_tube_cfg(DMA1, DMA_CH1, &my_tube_cfg);
 	if ( ret>0 ) {
-		Serial1.print(F("DMA configuration error: ")); Serial1.println(ret,HEX);
-		Serial1.print(F("Stopped, reset is needed!"));
+		Serial1.print("FATAL ERROR: halt due to DMA configuration error: "); Serial1.println(ret,HEX);
 		while ( 1 );	// halted
 	}
-	dma_attach_interrupt(DMA1, DMA_CH1, DMA_RX_ISR);	// attach an interrupt handler.
+	dma_clear_isr_bits(DMA1, DMA_CH1);
 	dma_enable(DMA1, DMA_CH1);	// Enable the DMA tube. It will now begin serving requests.
 
-	Serial1.println(F("done."));
+	Serial1.println("done.");
 }
 /*****************************************************************************/
 /*
@@ -268,14 +234,11 @@ bool start = false;
 /*****************************************************************************/
 void setup()
 {
-	//Serial1.begin(57600);
-	Serial1.begin(500000);
+	Serial1.begin(1000000);
 	while(!Serial1) {}  // wait for Leonardo
-	//delay (5000);	// wait 5 seconds due to PC serial driver recognition delay
 
-	Serial1.println(F("\n***** ADC dual regular simultaneous mode acquisition *****\n"));
-	Serial1.println(F("Acquired data on selected analog input pins is sent over SPI2."));
-	delay (100);
+	Serial1.println("\n***** ADC dual regular simultaneous mode acquisition *****\n");
+	Serial1.println("Acquired data on selected analog input pins is sent over SPI2.");
 
 	// set port mode of used analog input pins
 	// comment out lines of not used analog input pins
@@ -295,27 +258,19 @@ void setup()
 #endif
 	SetupParameters();
 	SetupModules();
-	Serial1.print(F("-> sampling started..."));
+	Serial1.print("-> sampling started...");
 	rec_buff[0] = 0;
 }
 /*****************************************************************************/
 /*****************************************************************************/
 void SetupModules()
 {
-	Serial1.println(F("\n***** Accepted commands *****"));
-	Serial1.print(F("\tSet up recording parameters: set rec_time=")); Serial1.print(recording_time);
-		Serial1.print(F(";sampling_freq=")); Serial1.print(sampling_frequency/1000);
-		Serial1.print(F(";samples_per_seq=")); Serial1.println(samples_per_sequence);
-	Serial1.println(F("\tStart recording: go\\n"));
-	Serial1.println(F("\tDump recorded data: get\\n\n*****"));
-	delay(100);
-/*
-//debug outputs
-	Serial1.println(F("Input parameters:"));
-	Serial1.print(F("recording_time [ms]: ")); Serial1.println(recording_time);
-	Serial1.print(F("sampling_frequency [Hz]: ")); Serial1.println(sampling_frequency);
-	Serial1.print(F("samples_per_sequence: ")); Serial1.println(samples_per_sequence);
-*/
+	Serial1.println("\n***** Accepted commands *****");
+	Serial1.print("\tSet up recording parameters: set rec_time="); Serial1.print(recording_time);
+		Serial1.print(";sampling_freq="); Serial1.print(sampling_frequency/1000);
+		Serial1.print(";samples_per_seq="); Serial1.println(samples_per_sequence);
+	Serial1.println("\tStart recording: go\\n");
+	Serial1.println("\tDump recorded data: get\\n\n*****");
 // set-up involved hardware modules
 	TIMER_Setup();
 	ADC_Setup();
@@ -332,21 +287,21 @@ void ParseToken(char * p)
 	if ( strstr(p,"time")>0 ) {
 		if ( (p=strchr(p,'='))>0 ) {
 			uint32_t val = atol(p+1);
-			Serial1.print(F(">> rec_time = ")); Serial1.println(val);
+			Serial1.print(">> rec_time = "); Serial1.println(val);
 			recording_time = (uint16_t)val;
 			reinit = true;
 		}
 	} else if ( strstr(p,"freq")>0 ) {
 		if ( (p=strchr(p,'='))>0 ) {
 			uint32_t val = atol(p+1)*1000;
-			Serial1.print(F(">> sampling_freq = ")); Serial1.println(val);
+			Serial1.print(">> sampling_freq = "); Serial1.println(val);
 			sampling_frequency = val;
 			reinit = true;
 		}
 	} else if ( strstr(p,"seq_1")>0 ) {
 		if ( (p=strchr(p,'='))>0 ) {
 			p++;
-			Serial1.print(F(">> seq_1 = ")); Serial1.println(p);
+			Serial1.print(">> seq_1 = "); Serial1.println(p);
 			// store the channels of sequence 1
 			uint16_t i;
 			for (i = 0; i<8; i++) {
@@ -359,15 +314,15 @@ void ParseToken(char * p)
 	} else if ( strstr(p,"seq_2")>0 ) {
 		if ( (p=strchr(p,'='))>0 ) {
 			p++;
-			Serial1.print(F(">> seq_2 = ")); Serial1.println(p);
+			Serial1.print(">> seq_2 = "); Serial1.println(p);
 			// store the channels of sequence 2
 			uint16_t i;
 			for (i = 0; i<8; i++) {
 				sequence_2[i] = atoi(p++);
 				if (*p++!=',')	break;
 			}
-			if ( samples_per_sequence != i)	Serial1.print(F("__Error: invalid seq_2 length!__"));
-			reinit = true;
+			if ( samples_per_sequence != i)	Serial1.print("__Error: seq_2 length does not match seq_1 length!__");
+			else reinit = true;
 		}
 	} else if ( strstr(p,"go")>0 ) start = true;
 }
@@ -415,11 +370,10 @@ void loop()
 		reinit = false;
 		SetupParameters();
 		SetupModules();
-	}		
+	}
 	// check ADC status and push data to SPI if sequence acquisition ended
-	if ( dma_irq_full_complete ) {
-		dma_irq_full_complete = 0;
+	if ( dma_get_isr_bits(DMA1, DMA_CH1)&DMA_ISR_TCIF1 ) {
 		ADC_buffer_to_SPI();	// send data to SPI
-		buff_sent = 1;	// overrun management
+		dma_clear_isr_bits(DMA1, DMA_CH1);
 	}
 }
