@@ -358,7 +358,7 @@ void PromptUpdate()
       switch (prTarget) {
         case REC_TIME:
           rec_time = res;
-          String[] scr1 = {"- recording time: "+rec_time+" [ms]","","Enter sampling frequency [kHz]:"};
+          String[] scr1 = {"- recording time: "+rec_time+" [ms]","","Enter sampling frequency [Hz]:"};
           DisplayAddLines(scr1,-1,-3);
           PromptReset();
           DisplayAddLine(prompt,-1,0);

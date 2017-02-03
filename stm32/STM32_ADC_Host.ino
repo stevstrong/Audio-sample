@@ -12,6 +12,8 @@
 #include <SPI.h>
 #include <SdFat.h>
 
+//#define Serial1 Serial2
+
 /********************************************************************/
 // Configuration
 /********************************************************************/
@@ -36,6 +38,11 @@ uint8_t use_diff_channels = 0;
 #define LED_PIN		PC13 // generic mini
 /********************************************************************/
 // defines
+/********************************************************************/
+/********************************************************************/
+#ifndef SPI_DATA_SIZE_16BIT
+  #define SPI_DATA_SIZE_16BIT DATA_SIZE_16BIT 
+#endif
 /********************************************************************/
 // DO NOT CHANGE !!!
 /********************************************************************/
@@ -135,7 +142,7 @@ void SPI_setup(void)
 {
 	Serial.print(("initializing SPI1..."));
 	// use SPI 1 for recording, SPI 2 is used by SD card
-	SPI.beginTransactionSlave(SPISettings(18000000, MSBFIRST, SPI_MODE0, DATA_SIZE_16BIT));
+	SPI.beginTransactionSlave(SPISettings(18000000, MSBFIRST, SPI_MODE0, SPI_DATA_SIZE_16BIT));
 	Serial.println(("done."));
 }
 /*****************************************************************************/
@@ -282,7 +289,8 @@ void setup()
 {
 	Serial.begin(); // PC
 	Serial1.begin(1000000); // ADC slave port
-	while( !Serial.isConnected() ); // wait for USB serial connection 
+	while( !Serial.isConnected() ); // wait for USB serial connection
+	delay(1000);
 
 	Serial.println(("\n***** Multi-channel analog acquisition application *****\n"));
 	Serial.println(("ADC data received via SPI1 in slave mode is stored to SD-card via SPI2."));
@@ -402,23 +410,25 @@ void TransmitBinaryData(void)
 	if ( sBuf[0]>0 ) { delay(500); Serial.println(sBuf); }
 }
 /*****************************************************************************/
-#define BUFFER_LENGTH		200
+#define BUFFER_LENGTH		512
 char rec_buff[BUFFER_LENGTH] __attribute__ ((aligned(1)));
 /*****************************************************************************/
 void ParseToken(char * p)
 {
 	//Serial.print("parsing: "); Serial.println(p);
-	if ( strstr(p,"time")>0 ) {
+	if ( strstr(p,"rec_time")>0 ) {
 		if ( (p=strchr(p,'='))>0 ) {
 			uint32_t val = atol(p+1);
 			Serial.print(">> rec_time = "); Serial.println(val);
 			recording_time = (uint16_t)val;
 		}
 	} else
-	if ( strstr(p,"freq")>0 ) {
+	if ( strstr(p,"sampling_freq")>0 ) {
 		if ( (p=strchr(p,'='))>0 ) {
-			uint32_t val = atol(p+1)*1000;
+			uint32_t val = atol(p+1);
 			Serial.print(">> sampling_freq = "); Serial.println(val);
+			// forward the parameter to ADC slave
+			Serial1.print("sampling_freq="); Serial1.println(val);
 			sampling_frequency = val;
 		}
 	} else
@@ -463,13 +473,35 @@ void ParseRxData()
 	rec_buff[0] = 0;
 }
 /*****************************************************************************/
+#define SERIAL_RX_TIMEOUT	100	// millis
+/*****************************************************************************/
+void CheckSerial1(void)
+{
+	// wait for serial data
+	if ( Serial1.available()<=0 ) return;
+	rec_buff[0] = 0;	// mark start of string
+	byte rec_index = 0;
+	// read bytes
+	uint32_t ts = millis();	// prepare reception time-out
+	while ( (millis()-ts)<SERIAL_RX_TIMEOUT ) {	// no time-out occurred yet
+		if ( Serial1.available()<=0 ) continue;
+		rec_buff[rec_index++] = Serial1.read();
+		ts = millis();	// reset time-out to receive next byte
+	}
+	if ( rec_index==0 ) return;	// nothing was received
+	rec_buff[rec_index] = 0;	// mark end of string
+	if ( rec_buff[rec_index-1]=='\n' ) rec_buff[rec_index-1] = 0;	// clear '\n'
+	if ( str_mode ) {
+		Serial.print("> slave replied: "); Serial.println(rec_buff);// Serial.println(" chars.");
+	}
+}
+/*****************************************************************************/
 /*****************************************************************************/
 byte SerialReadBytes()
 {
-#define SERIAL_RX_TIMEOUT	100	// millis
 	// wait for serial data
+	if ( Serial.available()<=0 ) return 0;
 	rec_buff[0] = 0;	// mark start of string
-	//if ( Serial1.available()<=0 ) return 0;
 	byte rec_index = 0;
 	// read bytes
 	uint32_t ts = millis();	// prepare reception time-out
@@ -482,7 +514,7 @@ byte SerialReadBytes()
 	rec_buff[rec_index] = 0;	// mark end of string
 	if ( rec_buff[rec_index-1]=='\n' ) rec_buff[rec_index-1] = 0;	// clear '\n'
 	if ( str_mode ) {
-		Serial.print("> received: "); Serial.println(rec_buff);// Serial.println(" chars.");
+		//Serial.print("> received: "); Serial.println(rec_buff);// Serial.println(" chars.");
 	}
 	return rec_index;
 }
@@ -492,14 +524,16 @@ void CheckSerial()
 {
 	Serial.println("\n***** Accepted commands *****");
 	Serial.print("\tSet up recording parameters: set rec_time="); Serial.print(recording_time);
-		Serial.print(";sampling_freq="); Serial.print(sampling_frequency/1000);
+		Serial.print(";sampling_freq="); Serial.print(sampling_frequency);
 		Serial.print(";samples_per_seq="); Serial.println(samples_per_sequence);
 	Serial.println("\tStart recording: go\\n");
 	Serial.println("\tDump recorded data: get\\n\n*****");
 	rec_buff[0] = 0;
+	Serial1.write(0); // activate slave
 	while ( !start ) {
 		if ( SerialReadBytes() )	// parse received serial data
 			ParseRxData();
+		CheckSerial1();
 	}
 }
 /*****************************************************************************/
@@ -533,7 +567,7 @@ void loop()
 
 	// from now on, the samples received over SPI1 are stored in the ADC_BUFFER via DMA1 channel 2.
 	// sample until number of input blocks was filled with data
-	for(block_nr=0; block_nr<total_blocks; block_nr ++) {
+	for (block_nr=0; block_nr<total_blocks; block_nr ++) {
 		// time-out to avoid hangup if something goes wrong
 		trun = millis();
 		tout = 0; // time-out

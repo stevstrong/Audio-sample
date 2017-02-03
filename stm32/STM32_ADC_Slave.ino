@@ -15,6 +15,8 @@
 #include <libmaple/gpio.h>
 #include <SPI.h>
 
+//#define Serial1 Serial
+
 /********************************************************************/
 // Configuration
 /********************************************************************/
@@ -25,12 +27,12 @@ uint32_t sampling_frequency = 44100;	// in Hz
 #define SAMPLES_PER_SEQUENCE 8
 #define RECORDS_PER_SEQUENCE (SAMPLES_PER_SEQUENCE*2)
 // the main buffer to store ADC sample values
-uint32_t adc_buffer[SAMPLES_PER_SEQUENCE] __attribute__ ((packed,aligned(4)));
+uint32_t adc_buffer[SAMPLES_PER_SEQUENCE];
 uint32_t total_sequences;
 uint32_t timer_reload_value;
 // channel 17 = Vrefint, only available on ADC1, can be used for tests
-uint8_t sequence_1[SAMPLES_PER_SEQUENCE] __attribute__ ((packed)) = {0,1,2,3,4,5,6,7};
-uint8_t sequence_2[SAMPLES_PER_SEQUENCE] __attribute__ ((packed)) = {8,8,8,8,8,8,8,8};
+uint8_t sequence_1[SAMPLES_PER_SEQUENCE] = {0,1,2,3,4,5,6,7};
+uint8_t sequence_2[SAMPLES_PER_SEQUENCE] = {8,8,8,8,8,8,8,8};
 uint8_t samples_per_sequence = SAMPLES_PER_SEQUENCE;
 uint8_t records_per_sequence = RECORDS_PER_SEQUENCE;
 /********************************************************************/
@@ -48,6 +50,10 @@ uint8_t records_per_sequence = RECORDS_PER_SEQUENCE;
 #define NSS_CLEAR	( GPIOB->regs->BRR = (1U << 12) )
 /********************************************************************/
 // defines
+/********************************************************************/
+#ifndef SPI_DATA_SIZE_16BIT
+  #define SPI_DATA_SIZE_16BIT DATA_SIZE_16BIT 
+#endif
 /********************************************************************/
 // DO NOT CHANGE !!!
 /********************************************************************/
@@ -106,7 +112,7 @@ void TIMER_Setup(void)
 	(TIMER3->regs).adv->CCR4 = 0;
 	(TIMER3->regs).adv->DCR = 0;			// don't use DMA
 	(TIMER3->regs).adv->DMAR = 0;
-	// don't forget to set the ADC trigger source to TIMER3->TRG0. Do it before enabling the ADC !!!
+	// don't forget to set the ADC trigger source to TIMER3->TRG0, before enabling the ADC !!!
 }
 /*****************************************************************************/
 // DMA tube configuration
@@ -124,7 +130,7 @@ dma_tube_config my_tube_cfg = {
 /*****************************************************************************/
 void DMA_Setup(void)
 {
-	Serial1.print("preparing the DMA...");
+	Serial.print("preparing the DMA...");
 	dma_init(DMA1);	// turn DMA on
 	my_tube_cfg.tube_nr_xfers = samples_per_sequence;	// configure DMA nr of transfers
 	int ret = dma_tube_cfg(DMA1, DMA_CH1, &my_tube_cfg);
@@ -135,7 +141,7 @@ void DMA_Setup(void)
 	dma_clear_isr_bits(DMA1, DMA_CH1);
 	dma_enable(DMA1, DMA_CH1);	// Enable the DMA tube. It will now begin serving requests.
 
-	Serial1.println("done.");
+	Serial.println("done.");
 }
 /*****************************************************************************/
 /*
@@ -185,7 +191,7 @@ void ADC_buffer_to_SPI(void)
 /*****************************************************************************/
 void ADC_Setup(void)
 {
-	Serial1.print(F("setting up the ADC..."));
+	Serial.print(("setting up the ADC..."));
 
 	adc_set_prescaler(ADC_PRE_PCLK2_DIV_2);
 
@@ -212,33 +218,36 @@ void ADC_Setup(void)
 
 	ADC1->regs->CR1 = ( (0x06 << 16) | ADC_CR1_SCAN ); // b0110: Regular simultaneous mode only, enable SCAN
 	ADC2->regs->CR1 = ( ADC_CR1_SCAN ); // enable SCAN, mode setting not possible for ADC2
-	Serial1.println(F("done."));
+	Serial.println(("done."));
 }
 /*****************************************************************************/
 SPIClass SPI_2(2);
 /*****************************************************************************/
 void SPI_setup(void)
 {
-	Serial1.print(F("setting up the SPI..."));
+	Serial.print(("setting up the SPI..."));
 	pinMode(NSS_PIN, OUTPUT);	// configure NSS pin
 	NSS_SET;	// set to inactive
 	// use SPI 2 because SPI 1 pins are used as analog input
-	SPI_2.beginTransaction(SPISettings(18000000, MSBFIRST, SPI_MODE0, DATA_SIZE_16BIT));
-	Serial1.println(F("done."));
+	SPI_2.beginTransaction(SPISettings(18000000, MSBFIRST, SPI_MODE0, SPI_DATA_SIZE_16BIT));
+	Serial.println(F("done."));
 }
 /*****************************************************************************/
-#define BUFFER_LENGTH		200
-char rec_buff[BUFFER_LENGTH] __attribute__ ((packed));
+#define BUFFER_LENGTH		250
+char rec_buff[BUFFER_LENGTH];
 bool reinit = false;
 bool start = false;
 /*****************************************************************************/
 void setup()
 {
-	Serial1.begin(1000000);
-	while(!Serial1) {}  // wait for Leonardo
+	Serial.begin(); // USB port
+	Serial1.begin(1000000); // communication port to the ADC host
+	//while(!Serial1) {}  // wait for Leonardo
+	while ( Serial1.available()<=0 ) ; // wait for any data from host
+	Serial1.read();
 
-	Serial1.println("\n***** ADC dual regular simultaneous mode acquisition *****\n");
-	Serial1.println("Acquired data on selected analog input pins is sent over SPI2.");
+	Serial.println("\n***** ADC dual regular simultaneous mode acquisition - slave application *****\n");
+	Serial.println("Acquired data on selected analog input pins is sent over SPI2.");
 
 	// set port mode of used analog input pins
 	// comment out lines of not used analog input pins
@@ -254,29 +263,31 @@ void setup()
 #if defined DEBUG_PIN
 	pinMode(DEBUG_PIN, OUTPUT);
 	//gpio_set_mode(GPIOA, 8,GPIO_OUTPUT_PP);	// PA8, pin 27
-	Serial1.println(F("Debug version!"));
+	Serial.println(("Debug version!"));
 #endif
 	SetupParameters();
 	SetupModules();
-	Serial1.print("-> sampling started...");
 	rec_buff[0] = 0;
 }
 /*****************************************************************************/
 /*****************************************************************************/
 void SetupModules()
 {
-	Serial1.println("\n***** Accepted commands *****");
-	Serial1.print("\tSet up recording parameters: set rec_time="); Serial1.print(recording_time);
-		Serial1.print(";sampling_freq="); Serial1.print(sampling_frequency/1000);
-		Serial1.print(";samples_per_seq="); Serial1.println(samples_per_sequence);
-	Serial1.println("\tStart recording: go\\n");
-	Serial1.println("\tDump recorded data: get\\n\n*****");
+/**/
+	Serial.println("\n***** Accepted commands *****");
+	Serial.print("\tSet up recording parameters: set rec_time="); Serial.print(recording_time);
+		Serial.print(";sampling_freq="); Serial.print(sampling_frequency);
+		Serial.print(";samples_per_seq="); Serial.println(samples_per_sequence);
+	//Serial.println("\tStart recording: go\\n");
+	Serial.println("\tDump recorded data: get\\n\n*****");
+
 // set-up involved hardware modules
 	TIMER_Setup();
 	ADC_Setup();
 	DMA_Setup();
 	SPI_setup();
 	start = false;	// stop after first run
+	Serial.println("-> sampling started...");
 	// let timer run - do this just before generating an update trigger by SW
 	timer_resume(TIMER3);
 }
@@ -291,14 +302,16 @@ void ParseToken(char * p)
 			recording_time = (uint16_t)val;
 			reinit = true;
 		}
-	} else if ( strstr(p,"freq")>0 ) {
+	} else
+	if ( strstr(p,"sampling_freq")>0 ) {
 		if ( (p=strchr(p,'='))>0 ) {
-			uint32_t val = atol(p+1)*1000;
+			uint32_t val = atol(p+1);
 			Serial1.print(">> sampling_freq = "); Serial1.println(val);
 			sampling_frequency = val;
 			reinit = true;
 		}
-	} else if ( strstr(p,"seq_1")>0 ) {
+	} else
+	if ( strstr(p,"seq_1")>0 ) {
 		if ( (p=strchr(p,'='))>0 ) {
 			p++;
 			Serial1.print(">> seq_1 = "); Serial1.println(p);
@@ -324,7 +337,10 @@ void ParseToken(char * p)
 			if ( samples_per_sequence != i)	Serial1.print("__Error: seq_2 length does not match seq_1 length!__");
 			else reinit = true;
 		}
-	} else if ( strstr(p,"go")>0 ) start = true;
+	} else if ( strstr(p,"go")>0 ) {
+		start = true;
+		//timer_resume(TIMER3);
+	}
 }
 /*****************************************************************************/
 /*****************************************************************************/
@@ -355,7 +371,7 @@ uint16_t SerialReadBytes()
 	if ( rec_index==0 ) return 0;	// nothing was received
 	rec_buff[rec_index] = 0;	// mark end of string
 	if ( rec_buff[rec_index-1]=='\n' ) rec_buff[rec_index-1] = 0;	// clear '\n'
-	//if ( str_mode ) { Serial1.print(F("> received: ")); Serial1.println(rec_buff); }
+	//if ( str_mode ) { Serial.print(("> received: ")); Serial.println(rec_buff); }
 	return rec_index;
 }
 /*****************************************************************************/
@@ -368,6 +384,7 @@ void loop()
 	// re-init if parameters have changed 
 	if ( reinit ) {
 		reinit = false;
+		timer_pause(TIMER3);	// stop timer, to stop DMA
 		SetupParameters();
 		SetupModules();
 	}
